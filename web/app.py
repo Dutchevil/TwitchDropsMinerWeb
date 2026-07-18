@@ -57,6 +57,128 @@ app.config['JSON_SORT_KEYS'] = False
 # Set up logging
 logger = logging.getLogger('web_interface')
 logger.setLevel(logging.INFO)
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
+_progress_health_state: Dict[str, Any] = {
+    'drop_id': None,
+    'current_minutes': None,
+    'updated_at': None,
+}
+
+
+def get_asset_version() -> str:
+    """Return a stable cache-busting version for dashboard assets."""
+    explicit = os.environ.get('TDM_WEB_ASSET_VERSION') or os.environ.get('BUILD_VERSION')
+    if explicit:
+        return explicit
+
+    paths = [Path(__file__), Path(__file__).parent / 'templates' / 'index.html']
+    static_dir = Path(__file__).parent / 'static'
+    for subdir in ('js', 'css'):
+        for file_path in (static_dir / subdir).glob('*'):
+            if file_path.is_file():
+                paths.append(file_path)
+
+    newest = max(int(path.stat().st_mtime) for path in paths if path.exists())
+    return f"{__version__}-{newest}"
+
+
+@app.context_processor
+def inject_asset_version():
+    return {'asset_version': get_asset_version()}
+
+
+def get_progress_health(
+    drop_id: str | None,
+    current_minutes: int | None,
+    required_minutes: int | None,
+    *,
+    now: datetime | None = None,
+    previous: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Track whether visible drop progress is changing recently enough."""
+    now = now or datetime.now(timezone.utc)
+    state = previous or _progress_health_state
+    changed = (
+        drop_id != state.get('drop_id')
+        or current_minutes != state.get('current_minutes')
+    )
+
+    if changed or state.get('updated_at') is None:
+        state['drop_id'] = drop_id
+        state['current_minutes'] = current_minutes
+        state['updated_at'] = now
+
+    updated_at = state.get('updated_at') or now
+    if not isinstance(updated_at, datetime):
+        updated_at = now
+
+    minutes_since_change = max(0, int((now - updated_at).total_seconds() // 60))
+    is_complete = (
+        current_minutes is not None
+        and required_minutes is not None
+        and required_minutes > 0
+        and current_minutes >= required_minutes
+    )
+    stale = not is_complete and minutes_since_change >= 8
+
+    return {
+        'state': 'stale' if stale else 'ok',
+        'message': (
+            f'Progress has not changed for {minutes_since_change} minutes'
+            if stale else 'Progress updated recently'
+        ),
+        'last_progress_change_at': updated_at.isoformat(),
+        'minutes_since_progress_change': minutes_since_change,
+        'stale_after_minutes': 8,
+    }
+
+
+def build_active_drop_payload(drop, source: str, *, now: datetime | None = None) -> Dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
+    image_url = None
+    if getattr(drop, 'benefits', None) and len(drop.benefits) > 0:
+        image_url = getattr(drop.benefits[0], 'image_url', None)
+
+    current_minutes = getattr(drop, 'current_minutes', None)
+    required_minutes = getattr(drop, 'required_minutes', None)
+    progress_percentage = (
+        getattr(drop, 'progress_percentage')
+        if hasattr(drop, 'progress_percentage')
+        else round(getattr(drop, 'progress', 0) * 100)
+    )
+
+    payload = {
+        'source': source,
+        'name': getattr(drop, 'name', None),
+        'campaign_name': getattr(drop.campaign, 'name', None) if getattr(drop, 'campaign', None) else None,
+        'game': drop.campaign.game.name if getattr(drop, 'campaign', None) and getattr(drop.campaign, 'game', None) else None,
+        'current_minutes': current_minutes,
+        'required_minutes': required_minutes,
+        'remaining_minutes': getattr(drop, 'remaining_minutes', None),
+        'progress_percentage': progress_percentage,
+        'last_update': now.isoformat(),
+        'drop_id': getattr(drop, 'id', None),
+        'image_url': image_url,
+    }
+    payload['progress_health'] = get_progress_health(
+        payload['drop_id'], current_minutes, required_minutes, now=now
+    )
+    return payload
+
+
+def get_current_drop_from_miner(twitch):
+    gui = _get_gui()
+    drop = None
+    source = 'gql'
+    if gui and hasattr(gui, 'progress'):
+        drop = gui.progress.current_drop
+        if drop is not None:
+            source = 'gui'
+    if drop is None:
+        watching_channel = twitch.watching_channel.get_with_default(None)
+        drop = twitch.get_active_drop(watching_channel)
+    return drop, source
 
 
 @app.route('/login')
@@ -1394,6 +1516,66 @@ def twitch_cancel_auth(username=None):
         return jsonify({'error': str(e)}), 500
 
 
+def _json_from_view_response(response):
+    """Extract JSON and HTTP code from an internal Flask view response."""
+    status_code = 200
+    if isinstance(response, tuple):
+        response, status_code = response[0], response[1]
+    if hasattr(response, 'status_code'):
+        status_code = response.status_code
+    data = response.get_json() if hasattr(response, 'get_json') else response
+    return data, status_code
+
+
+@app.route('/api/dashboard_state')
+@auth_required
+def dashboard_state(username=None):
+    """Return top-of-dashboard state in one consistent payload."""
+    start = time.perf_counter()
+    server_time = datetime.now(timezone.utc)
+
+    if tdm_instance is None:
+        return jsonify({'error': 'Miner not initialized'}), 503
+
+    try:
+        status_data, status_code = _json_from_view_response(status(username=username))
+        diagnostics_data, diagnostics_code = _json_from_view_response(diagnostic(username=username))
+        active_data, active_code = _json_from_view_response(active_drop(username=username))
+
+        errors = {}
+        if status_code >= 400:
+            errors['status'] = status_data
+            status_data = None
+        if diagnostics_code >= 400:
+            errors['diagnostics'] = diagnostics_data
+            diagnostics_data = None
+        if active_code >= 400:
+            errors['active_drop'] = active_data
+            active_data = None
+
+        payload = {
+            'server_time': server_time.isoformat(),
+            'asset_version': get_asset_version(),
+            'status': status_data,
+            'active_drop': active_data,
+            'diagnostics': diagnostics_data,
+            'progress_health': (
+                active_data or {}
+            ).get('progress_health') if isinstance(active_data, dict) else None,
+            'poll_health': {
+                'dashboard_state_generated_ms': round((time.perf_counter() - start) * 1000),
+                'status': 'ok' if status_data is not None else 'error',
+                'active_drop': 'ok' if active_data is not None else 'error',
+                'diagnostics': 'ok' if diagnostics_data is not None else 'error',
+            },
+            'errors': errors,
+        }
+        return jsonify(payload)
+    except Exception as e:
+        logger.error(f"Error getting dashboard state: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/active_drop')
 @auth_required
 def active_drop(username=None):
@@ -1403,45 +1585,13 @@ def active_drop(username=None):
 
     try:
         twitch = tdm_instance
-        gui = _get_gui()
 
-        drop = None
-        source = 'gql'
-
-        # Prefer the GUI stub's tracked drop (set by progress.display())
-        if gui and hasattr(gui, 'progress'):
-            drop = gui.progress.current_drop
-            if drop is not None:
-                source = 'gui'
-
-        # Fall back to get_active_drop
-        if drop is None:
-            watching_channel = twitch.watching_channel.get_with_default(None)
-            drop = twitch.get_active_drop(watching_channel)
+        drop, source = get_current_drop_from_miner(twitch)
 
         if drop is None:
             return jsonify({'active_drop': None})
 
-        # Get image URL from the first benefit
-        image_url = None
-        if getattr(drop, 'benefits', None) and len(drop.benefits) > 0:
-            image_url = getattr(drop.benefits[0], 'image_url', None)
-
-        result = {
-            'source': source,
-            'name': drop.name,
-            'campaign_name': getattr(drop.campaign, 'name', None) if getattr(drop, 'campaign', None) else None,
-            'game': drop.campaign.game.name if getattr(drop, 'campaign', None) and getattr(drop.campaign, 'game', None) else None,
-            'current_minutes': drop.current_minutes,
-            'required_minutes': drop.required_minutes,
-            'remaining_minutes': drop.remaining_minutes,
-            'progress_percentage': drop.progress_percentage if hasattr(drop, 'progress_percentage') else round(drop.progress * 100),
-            'last_update': datetime.now(timezone.utc).isoformat(),
-            'drop_id': getattr(drop, 'id', None),
-            'image_url': image_url,
-        }
-
-        return jsonify(result)
+        return jsonify(build_active_drop_payload(drop, source))
 
     except Exception as e:
         logger.error(f"Error getting active drop: {e}")

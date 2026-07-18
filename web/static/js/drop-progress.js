@@ -141,6 +141,12 @@ function updateDropProgressUI(data) {
         dropValue.textContent = data.name || 'None';
     }
 
+    currentDropContext = {
+        id: data.drop_id || currentDropContext.id,
+        name: data.name || currentDropContext.name,
+        game: data.game || currentDropContext.game,
+    };
+
     updateAdvancedDropFields(data);
     
     // Update drop image

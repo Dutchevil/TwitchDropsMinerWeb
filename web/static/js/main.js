@@ -11,6 +11,8 @@ let campaignsData = [];
 let inventoryData = { claimed: [], pending: [] };
 let settingsData = {};
 let isDataLoading = false;
+let currentDropContext = { id: null, name: null, game: null };
+let lastInventoryPayload = null;
 
 // Helper function to get auth headers
 function getAuthHeaders() {
@@ -51,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setupTabNavigation();
     setupEventListeners();
+    setupSmartFilterListeners();
     
     // Restore scroll positions on initial load
     const activeTabButton = document.querySelector('.tab-button.border-purple-600');
@@ -731,7 +734,11 @@ function refreshData(options = {}) {
     
     // Create a promise for each data fetch based on config
     const fetchPromises = [
-        fetchStatus().catch(error => ({ error })), // Always fetch status
+        fetchDashboardState().catch(error => {
+            // Fall back to the older status path if the combined endpoint fails.
+            console.log('Dashboard state fetch error:', error.message);
+            return fetchStatus().catch(statusError => ({ error: statusError }));
+        }),
     ];
     
     // Only add these fetches if configured to do so
@@ -811,6 +818,158 @@ function refreshData(options = {}) {
             
             // Scroll position restoration is now handled by scroll-position.js
         });
+}
+
+// Fetch the combined dashboard state
+function fetchDashboardState() {
+    const requestStartedAt = performance.now();
+    return fetch('/api/dashboard_state', {
+        headers: getAuthHeaders()
+    })
+        .then(response => {
+            if (!response.ok) {
+                if (!handleUnauthorizedResponse(response)) {
+                    return Promise.reject(new Error('Unauthorized'));
+                }
+                throw new Error(`Dashboard API returned ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            if (data.status) {
+                data.status._statusPingMs = Math.round(performance.now() - requestStartedAt);
+                updateStatusUI(data.status);
+            }
+            if (data.active_drop && data.active_drop.active_drop !== null && typeof updateDropProgressUI === 'function') {
+                data.active_drop._pingMs = Math.round(performance.now() - requestStartedAt);
+                data.active_drop._fetchedAt = new Date();
+                updateDropProgressUI(data.active_drop);
+            }
+            if (data.diagnostics) {
+                updateDiagnosticUI(data.diagnostics);
+            }
+            updatePollHealthUI(data, Math.round(performance.now() - requestStartedAt));
+            return data;
+        })
+        .catch(error => {
+            updatePollHealthError('dashboard', error.message);
+            throw error;
+        });
+}
+
+function updatePollHealthUI(data, pingMs) {
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+    const now = new Date().toLocaleTimeString();
+    setText('connection-ping', `${pingMs}ms (dashboard)`);
+    setText('last-error', data.errors && Object.keys(data.errors).length ? JSON.stringify(data.errors) : 'None');
+    setText('poll-status-api', `${data.poll_health?.status || 'unknown'} @ ${now}`);
+    setText('poll-active-api', `${data.poll_health?.active_drop || 'unknown'} @ ${now}`);
+    setText('poll-campaigns-api', window.currentTab === 'campaigns' ? `auto 20s @ ${now}` : 'paused until tab visible');
+    setText('poll-inventory-api', window.currentTab === 'inventory' ? `auto 20s @ ${now}` : 'paused until tab visible');
+    updateProgressHealthUI(data.progress_health);
+}
+
+function updatePollHealthError(source, message) {
+    const lastError = document.getElementById('last-error');
+    if (lastError) lastError.textContent = `${source}: ${message}`;
+}
+
+function updateProgressHealthUI(health) {
+    const el = document.getElementById('progress-health-message');
+    if (!el) return;
+    if (!health) {
+        el.classList.add('hidden');
+        return;
+    }
+    el.textContent = health.message || '';
+    el.className = health.state === 'stale'
+        ? 'text-xs mt-2 px-2 py-1 rounded bg-yellow-100 text-yellow-800 border border-yellow-300'
+        : 'text-xs mt-2 px-2 py-1 rounded bg-green-50 text-green-700 border border-green-200';
+}
+
+function setupSmartFilterListeners() {
+    const campaignFilter = document.getElementById('campaign-smart-filter');
+    if (campaignFilter) {
+        campaignFilter.addEventListener('change', () => updateCampaignsUI(campaignsData));
+    }
+    const inventoryFilter = document.getElementById('inventory-smart-filter');
+    if (inventoryFilter) {
+        inventoryFilter.addEventListener('change', () => {
+            if (lastInventoryPayload) updateInventoryUI(lastInventoryPayload);
+        });
+    }
+}
+
+function dropProgressPercent(drop) {
+    const required = Number(drop.required_minutes || 0);
+    const current = Number(drop.current_minutes || 0);
+    return required > 0 ? Math.round((current / required) * 100) : 0;
+}
+
+function prioritizeDrops(drops) {
+    return [...drops].sort((a, b) => {
+        const aCurrent = a.id && a.id === currentDropContext.id ? 1 : 0;
+        const bCurrent = b.id && b.id === currentDropContext.id ? 1 : 0;
+        if (aCurrent !== bCurrent) return bCurrent - aCurrent;
+        const aClaimable = Number(a.current_minutes || 0) >= Number(a.required_minutes || 0) ? 1 : 0;
+        const bClaimable = Number(b.current_minutes || 0) >= Number(b.required_minutes || 0) ? 1 : 0;
+        if (aClaimable !== bClaimable) return bClaimable - aClaimable;
+        return dropProgressPercent(b) - dropProgressPercent(a);
+    });
+}
+
+function filterDropsForSmartView(drops, mode) {
+    if (mode === 'all') return prioritizeDrops(drops);
+    return prioritizeDrops(drops).filter(drop => {
+        const pct = dropProgressPercent(drop);
+        const isCurrent = drop.id && drop.id === currentDropContext.id;
+        const sameGame = currentDropContext.game && drop.game === currentDropContext.game;
+        const claimable = Number(drop.current_minutes || 0) >= Number(drop.required_minutes || 0);
+        if (mode === 'current-game') return sameGame || isCurrent;
+        if (mode === 'in-progress') return pct > 0 && pct < 100;
+        if (mode === 'claimable') return claimable;
+        return isCurrent || sameGame || claimable || (pct > 0 && pct < 100);
+    });
+}
+
+function filterCampaignsForSmartView(campaigns) {
+    const mode = document.getElementById('campaign-smart-filter')?.value || 'smart';
+    if (mode === 'all') return prioritizeCampaigns(campaigns);
+    return prioritizeCampaigns(campaigns).filter(campaign => {
+        const drops = campaign.drops || [];
+        const hasCurrent = drops.some(drop => drop.id && drop.id === currentDropContext.id);
+        const sameGame = currentDropContext.game && campaign.game === currentDropContext.game;
+        const inProgress = drops.some(drop => {
+            const pct = dropProgressPercent(drop);
+            return pct > 0 && pct < 100;
+        });
+        const claimable = drops.some(drop => Number(drop.current_minutes || 0) >= Number(drop.required_minutes || 0));
+        if (mode === 'current-game') return sameGame || hasCurrent;
+        if (mode === 'in-progress') return inProgress || hasCurrent;
+        if (mode === 'claimable') return claimable;
+        return hasCurrent || sameGame || inProgress || claimable || campaign.status === 'ACTIVE';
+    });
+}
+
+function prioritizeCampaigns(campaigns) {
+    return [...campaigns].sort((a, b) => {
+        const score = campaign => {
+            const drops = campaign.drops || [];
+            const hasCurrent = drops.some(drop => drop.id && drop.id === currentDropContext.id) ? 1000 : 0;
+            const sameGame = currentDropContext.game && campaign.game === currentDropContext.game ? 200 : 0;
+            const maxProgress = drops.reduce((max, drop) => Math.max(max, dropProgressPercent(drop)), 0);
+            const claimable = drops.some(drop => Number(drop.current_minutes || 0) >= Number(drop.required_minutes || 0)) ? 500 : 0;
+            return hasCurrent + claimable + sameGame + maxProgress;
+        };
+        return score(b) - score(a);
+    });
 }
 
 // Fetch the current miner status
@@ -1314,6 +1473,11 @@ function updateStatusUI(data) {
     // Update drop value
     const dropValue = document.getElementById('drop-value');
     if (dropValue) dropValue.textContent = data.current_drop || 'None';
+    currentDropContext = {
+        id: data.current_drop_id || currentDropContext.id,
+        name: data.current_drop || currentDropContext.name,
+        game: data.current_game || currentDropContext.game,
+    };
       // Update progress bar
     const progressBar = document.getElementById('drop-progress-bar');
     if (progressBar && data.drop_progress !== undefined && data.drop_progress !== null) {
@@ -1480,12 +1644,15 @@ function watchChannel(channelName) {
 function updateCampaignsUI(data) {
     const campaignsList = document.getElementById('campaigns-list');
     if (!campaignsList) return;
+
+    const originalCount = data ? data.length : 0;
+    data = filterCampaignsForSmartView(data || []);
     
     // Clear existing content
     campaignsList.innerHTML = '';
     
     if (!data || data.length === 0) {
-        campaignsList.innerHTML = '<div class="col-span-full p-4 bg-white rounded shadow text-gray-500 text-center">No campaigns available.</div>';
+        campaignsList.innerHTML = `<div class="col-span-full p-4 bg-white rounded shadow text-gray-500 text-center">No campaigns match this filter (${originalCount} total).</div>`;
         return;
     }
     
@@ -1532,6 +1699,10 @@ function updateInventoryUI(data) {
     const claimedDrops = document.getElementById('claimed-drops');
     
     if (!pendingDrops || !claimedDrops) return;
+    lastInventoryPayload = data;
+    const inventoryMode = document.getElementById('inventory-smart-filter')?.value || 'smart';
+    const originalPendingCount = data.pending ? data.pending.length : 0;
+    const originalClaimedCount = data.claimed ? data.claimed.length : 0;
     
     // Clear existing content
     pendingDrops.innerHTML = '';
@@ -1539,10 +1710,10 @@ function updateInventoryUI(data) {
     
     // Process drops - check for 100% completed drops and move them to claimed
     const pendingItems = [];
-    const claimedItems = data.claimed ? [...data.claimed] : [];
+    const claimedItems = filterDropsForSmartView(data.claimed ? [...data.claimed] : [], inventoryMode);
     
     if (data.pending && data.pending.length > 0) {
-        data.pending.forEach(drop => {
+        filterDropsForSmartView(data.pending, inventoryMode).forEach(drop => {
             // Calculate progress
             const progress = drop.current_minutes / drop.required_minutes;
             
@@ -1558,6 +1729,10 @@ function updateInventoryUI(data) {
     }
     
     // Create document fragments for better performance
+    const summary = document.getElementById('inventory-filter-summary');
+    if (summary) {
+        summary.textContent = `Showing ${pendingItems.length} pending / ${claimedItems.length} claimed (${originalPendingCount + originalClaimedCount} total)`;
+    }
     const pendingFragment = document.createDocumentFragment();
     const claimedFragment = document.createDocumentFragment();
     
