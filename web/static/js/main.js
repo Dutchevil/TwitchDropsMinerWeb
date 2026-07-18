@@ -818,6 +818,8 @@ const maxStatusRetries = 3; // Max number of consecutive retries
 
 function fetchStatus() {
     return new Promise((resolve) => {
+        const requestStartedAt = performance.now();
+
         fetch('/api/status', {
             headers: getAuthHeaders()
         })
@@ -840,6 +842,7 @@ function fetchStatus() {
                 }
                 
                 // Update the UI with status information
+                data._statusPingMs = Math.round(performance.now() - requestStartedAt);
                 updateStatusUI(data);
                 
                 // Update connection status indicator
@@ -857,6 +860,10 @@ function fetchStatus() {
             })
             .catch(error => {
                 // Error handled silently;
+                const lastError = document.getElementById('last-error');
+                if (lastError) lastError.textContent = error.message;
+                const ping = document.getElementById('connection-ping');
+                if (ping) ping.textContent = 'status poll failed';
                   // Update UI to show error
                 updateStatusUIError();
                 
@@ -1342,8 +1349,10 @@ function updateStatusUI(data) {
         setText('drop-data-source', 'STATUS');
         setText('drop-raw-progress', current !== null && required !== null ? `${current}/${required} (${percent}%)` : `${percent}%`);
         setText('drop-last-update', new Date().toLocaleTimeString());
+        const ping = document.getElementById('connection-ping');
+        if (ping) ping.textContent = data._statusPingMs !== undefined ? `${data._statusPingMs}ms (status)` : '--';
         const lastError = document.getElementById('last-error');
-        if (lastError && (!lastError.textContent || lastError.textContent === '--')) lastError.textContent = 'None';
+        if (lastError) lastError.textContent = 'None';
     } else if (progressBar) {
         progressBar.style.width = '0%';
         progressBar.textContent = '0%';
