@@ -91,13 +91,17 @@ body.mode-advanced {
     }
 }
 
-/* Default state - hide advanced elements */
+/* Default state - hide advanced-only controls, but keep live drop
+   diagnostics visible because they are useful status, not placeholders. */
 .diagnostics-extra-info,
 .advanced-setting,
-.drop-advanced-info,
 .advanced-column,
 .technical-detail {
     display: none !important;
+}
+
+.drop-advanced-info {
+    display: block !important;
 }
 
 /* Responsive adjustments for compact mode */
