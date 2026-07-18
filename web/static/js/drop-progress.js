@@ -132,6 +132,7 @@ function updateAdvancedDropError(message) {
 function updateDropProgressUI(data) {
     // Exit if no drop data available
     if (!data || data.error || data.active_drop === null) {
+        clearCurrentDropContext();
         return;
     }
     
@@ -141,11 +142,7 @@ function updateDropProgressUI(data) {
         dropValue.textContent = data.name || 'None';
     }
 
-    currentDropContext = {
-        id: data.drop_id || currentDropContext.id,
-        name: data.name || currentDropContext.name,
-        game: data.game || currentDropContext.game,
-    };
+    updateCurrentDropContext(data.drop_id || null, data.name || null, data.game || null);
 
     updateAdvancedDropFields(data);
     

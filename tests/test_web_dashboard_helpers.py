@@ -56,6 +56,20 @@ class DashboardHelperTests(unittest.TestCase):
         self.assertGreaterEqual(health["minutes_since_progress_change"], 10)
         self.assertIn("Progress has not changed", health["message"])
 
+    def test_json_from_view_response_preserves_tuple_error_status(self):
+        with web_app.app.app_context():
+            data, status = web_app._json_from_view_response((web_app.jsonify({'error': 'boom'}), 503))
+        self.assertEqual(status, 503)
+        self.assertEqual(data, {'error': 'boom'})
+
+    def test_json_from_view_response_uses_response_status_when_not_tuple(self):
+        with web_app.app.app_context():
+            response = web_app.jsonify({'ok': True})
+            response.status_code = 202
+            data, status = web_app._json_from_view_response(response)
+        self.assertEqual(status, 202)
+        self.assertEqual(data, {'ok': True})
+
 
 if __name__ == "__main__":
     unittest.main()

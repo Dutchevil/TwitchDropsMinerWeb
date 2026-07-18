@@ -693,7 +693,7 @@ function refreshData(options = {}) {
         refreshInventory: true,
         refreshSettings: true,
         refreshLogin: true,
-        refreshActiveDrop: true
+        refreshActiveDrop: false
     };
     
     const config = { ...defaults, ...options };
@@ -892,6 +892,18 @@ function updateProgressHealthUI(health) {
     el.className = health.state === 'stale'
         ? 'text-xs mt-2 px-2 py-1 rounded bg-yellow-100 text-yellow-800 border border-yellow-300'
         : 'text-xs mt-2 px-2 py-1 rounded bg-green-50 text-green-700 border border-green-200';
+}
+
+function clearCurrentDropContext() {
+    currentDropContext = { id: null, name: null, game: null };
+}
+
+function updateCurrentDropContext(id, name, game) {
+    currentDropContext = {
+        id: id ?? null,
+        name: name ?? null,
+        game: game ?? null,
+    };
 }
 
 function setupSmartFilterListeners() {
@@ -1473,11 +1485,6 @@ function updateStatusUI(data) {
     // Update drop value
     const dropValue = document.getElementById('drop-value');
     if (dropValue) dropValue.textContent = data.current_drop || 'None';
-    currentDropContext = {
-        id: data.current_drop_id || currentDropContext.id,
-        name: data.current_drop || currentDropContext.name,
-        game: data.current_game || currentDropContext.game,
-    };
       // Update progress bar
     const progressBar = document.getElementById('drop-progress-bar');
     if (progressBar && data.drop_progress !== undefined && data.drop_progress !== null) {
@@ -1563,6 +1570,12 @@ function updateStatusUI(data) {
         } else {
             currentDrop.classList.remove('text-gray-500');
         }
+    }
+
+    if (data.current_drop) {
+        updateCurrentDropContext(data.current_drop_id || null, data.current_drop, data.current_game || null);
+    } else {
+        clearCurrentDropContext();
     }
 }
 

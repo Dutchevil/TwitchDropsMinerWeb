@@ -64,13 +64,17 @@ _progress_health_state: Dict[str, Any] = {
     'current_minutes': None,
     'updated_at': None,
 }
+_asset_version_cache: str | None = None
 
 
 def get_asset_version() -> str:
     """Return a stable cache-busting version for dashboard assets."""
+    global _asset_version_cache
     explicit = os.environ.get('TDM_WEB_ASSET_VERSION') or os.environ.get('BUILD_VERSION')
     if explicit:
         return explicit
+    if _asset_version_cache:
+        return _asset_version_cache
 
     paths = [Path(__file__), Path(__file__).parent / 'templates' / 'index.html']
     static_dir = Path(__file__).parent / 'static'
@@ -80,7 +84,8 @@ def get_asset_version() -> str:
                 paths.append(file_path)
 
     newest = max(int(path.stat().st_mtime) for path in paths if path.exists())
-    return f"{__version__}-{newest}"
+    _asset_version_cache = f"{__version__}-{newest}"
+    return _asset_version_cache
 
 
 @app.context_processor
@@ -1520,8 +1525,11 @@ def _json_from_view_response(response):
     """Extract JSON and HTTP code from an internal Flask view response."""
     status_code = 200
     if isinstance(response, tuple):
+        # Flask views may return (response, status) or (response, status, headers).
+        # Preserve the tuple status; the Response object itself often still has
+        # the default 200 until Flask finalizes the tuple.
         response, status_code = response[0], response[1]
-    if hasattr(response, 'status_code'):
+    elif hasattr(response, 'status_code'):
         status_code = response.status_code
     data = response.get_json() if hasattr(response, 'get_json') else response
     return data, status_code
