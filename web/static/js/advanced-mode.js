@@ -36,60 +36,33 @@ function setupAdvancedModeFeatures() {
     enhanceAdvancedMode();
 }
 
-// Populate advanced mode fields with data
+// Populate advanced mode fields with real diagnostics data only.
+// Drop diagnostics are maintained by main.js/drop-progress.js because they
+// receive the actual /api/status and /api/active_drop payloads. This file must
+// not invent placeholder values such as "Fallback", random drop ids, or fake
+// ping values — those make stale UI look trustworthy.
 function updateAdvancedFields(data) {
-    // Update drop info
-    if (data && data.currentDrop) {
-        document.getElementById('drop-data-source').textContent = data.dataSource || 'WebSocket';
-        document.getElementById('drop-id').textContent = data.currentDrop.id || '--';
-        document.getElementById('drop-raw-progress').textContent = data.currentDrop.rawProgress || '--';
-        document.getElementById('drop-last-update').textContent = new Date().toLocaleTimeString();
-    }
-    
-    // Update diagnostic info
     if (data && data.diagnostics) {
-        document.getElementById('build-info').textContent = data.diagnostics.buildInfo || '--';
-        document.getElementById('platform-info').textContent = data.diagnostics.platform || '--';
-        document.getElementById('connection-ping').textContent = data.diagnostics.ping || '--';
-        document.getElementById('last-error').textContent = data.diagnostics.lastError || 'None';
+        const buildInfo = document.getElementById('build-info');
+        if (buildInfo) buildInfo.textContent = data.diagnostics.buildInfo || '--';
+
+        const platformInfo = document.getElementById('platform-info');
+        if (platformInfo) platformInfo.textContent = data.diagnostics.platform || '--';
     }
 }
 
 // Apply enhancements when advanced mode is activated
 function enhanceAdvancedMode() {
-    // Set placeholder values for advanced mode fields if they're empty
-    if (document.getElementById('drop-data-source').textContent === '' || document.getElementById('drop-data-source').textContent === 'Unknown') {
-        const dataSource = document.querySelector('#drop-progress-text').textContent.includes('websocket') ? 'WebSocket' : 'Fallback';
-        document.getElementById('drop-data-source').textContent = dataSource;
+    // Keep system diagnostic placeholders harmless. Live drop diagnostics are
+    // populated by the polling code and should remain untouched here.
+    const buildInfo = document.getElementById('build-info');
+    if (buildInfo && (buildInfo.textContent === '' || buildInfo.textContent === '--')) {
+        const appVersion = document.getElementById('app-version')?.textContent;
+        buildInfo.textContent = appVersion && appVersion !== 'Unknown' ? appVersion : '--';
     }
-    
-    if (document.getElementById('drop-id').textContent === '' || document.getElementById('drop-id').textContent === '--') {
-        const dropName = document.getElementById('current-drop').textContent;
-        document.getElementById('drop-id').textContent = dropName !== 'Loading...' ? 'drop_' + Math.random().toString(36).substring(2, 10) : '--';
-    }
-    
-    if (document.getElementById('drop-raw-progress').textContent === '' || document.getElementById('drop-raw-progress').textContent === '--') {
-        const progressText = document.getElementById('drop-progress-text').textContent;
-        const match = progressText.match(/(\d+)\/(\d+)/);
-        document.getElementById('drop-raw-progress').textContent = match ? match[0] : '--';
-    }
-    
-    if (document.getElementById('drop-last-update').textContent === '' || document.getElementById('drop-last-update').textContent === '--') {
-        document.getElementById('drop-last-update').textContent = new Date().toLocaleTimeString();
-    }
-    
-    // Set placeholder values for system diagnostics if they're empty
-    if (document.getElementById('build-info').textContent === '' || document.getElementById('build-info').textContent === '--') {
-        const appVersion = document.getElementById('app-version').textContent;
-        document.getElementById('build-info').textContent = appVersion !== 'Unknown' ? appVersion + '-' + new Date().toISOString().split('T')[0] : '--';
-    }
-    
-    if (document.getElementById('platform-info').textContent === '' || document.getElementById('platform-info').textContent === '--') {
-        document.getElementById('platform-info').textContent = navigator.platform || '--';
-    }
-    
-    if (document.getElementById('connection-ping').textContent === '' || document.getElementById('connection-ping').textContent === '--') {
-        const connectionStatus = document.getElementById('connection-detail').textContent.trim();
-        document.getElementById('connection-ping').textContent = connectionStatus.includes('Connected') ? 'waiting for next poll' : '--';
+
+    const platformInfo = document.getElementById('platform-info');
+    if (platformInfo && (platformInfo.textContent === '' || platformInfo.textContent === '--')) {
+        platformInfo.textContent = navigator.platform || '--';
     }
 }

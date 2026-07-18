@@ -105,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 refreshChannels: true,
                 refreshCampaigns: false,  // Never auto-refresh campaigns in background
                 refreshInventory: false,  // Never auto-refresh inventory in background
+                refreshActiveDrop: false, // Dedicated drop-progress poller handles this every 10s
                 refreshSettings: false,
                 refreshLogin: false
             }).catch(error => {
