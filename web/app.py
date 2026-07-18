@@ -189,6 +189,7 @@ def status(username=None):
 
         # Active drop — prefer GUI stub progress data
         current_drop = None
+        current_drop_id = None
         drop_progress = None
         time_remaining = None
 
@@ -196,17 +197,20 @@ def status(username=None):
             drop = gui.progress.current_drop
             if drop is not None:
                 current_drop = drop.name
+                current_drop_id = getattr(drop, 'id', None)
                 drop_progress = f"{drop.current_minutes}/{drop.required_minutes}"
                 time_remaining = f"{drop.remaining_minutes} minutes"
 
-        # Fall back to get_active_drop
-        if current_drop is None:
+        # Fall back to get_active_drop, or use it to enrich GUI data with an ID.
+        if current_drop is None or current_drop_id is None:
             watching_channel = twitch.watching_channel.get_with_default(None)
             active_drop = twitch.get_active_drop(watching_channel)
             if active_drop:
-                current_drop = active_drop.name
-                drop_progress = f"{active_drop.current_minutes}/{active_drop.required_minutes}"
-                time_remaining = f"{active_drop.remaining_minutes} minutes"
+                if current_drop is None:
+                    current_drop = active_drop.name
+                    drop_progress = f"{active_drop.current_minutes}/{active_drop.required_minutes}"
+                    time_remaining = f"{active_drop.remaining_minutes} minutes"
+                current_drop_id = getattr(active_drop, 'id', current_drop_id)
 
         # Count pending drops
         inventory_pending = 0
@@ -226,6 +230,7 @@ def status(username=None):
             'current_game': current_game,
             'current_channel_status': current_channel_status,
             'current_drop': current_drop,
+            'current_drop_id': current_drop_id,
             'drop_progress': drop_progress,
             'time_remaining': time_remaining,
             'inventory_pending': inventory_pending,

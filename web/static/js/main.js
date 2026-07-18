@@ -1347,6 +1347,7 @@ function updateStatusUI(data) {
             if (el) el.textContent = value;
         };
         setText('drop-data-source', 'STATUS');
+        setText('drop-id', data.current_drop_id || '--');
         setText('drop-raw-progress', current !== null && required !== null ? `${current}/${required} (${percent}%)` : `${percent}%`);
         setText('drop-last-update', new Date().toLocaleTimeString());
         const ping = document.getElementById('connection-ping');
