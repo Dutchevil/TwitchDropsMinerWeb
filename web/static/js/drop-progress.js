@@ -6,7 +6,9 @@
 
 // Poll interval (in milliseconds) for checking drop progress
 const DROP_PROGRESS_POLL_INTERVAL = 30000; // 30 seconds
+const CAMPAIGNS_PROGRESS_REFRESH_INTERVAL = 60000; // 60 seconds
 let dropProgressInterval = null;
+let lastCampaignsProgressRefresh = 0;
 
 // Initialize the drop progress poller
 function initializeDropProgress() {
@@ -44,6 +46,7 @@ function fetchActiveDropData() {
         })
         .then(data => {
             updateDropProgressUI(data);
+            refreshCampaignsProgressIfNeeded();
             return data;
         })
         .catch(error => {
@@ -55,6 +58,25 @@ function fetchActiveDropData() {
 
 // Expose the function to the window object for access from main.js
 window.fetchActiveDropData = fetchActiveDropData;
+
+// Campaign cards use /api/campaigns, not /api/active_drop. Refresh them
+// periodically while the campaigns tab is visible so the campaign list does
+// not show stale percentages while the header/current-drop panel is correct.
+function refreshCampaignsProgressIfNeeded() {
+    if (window.currentTab !== 'campaigns' || typeof window.fetchCampaigns !== 'function') {
+        return;
+    }
+
+    const now = Date.now();
+    if (now - lastCampaignsProgressRefresh < CAMPAIGNS_PROGRESS_REFRESH_INTERVAL) {
+        return;
+    }
+
+    lastCampaignsProgressRefresh = now;
+    window.fetchCampaigns().catch(error => {
+        console.log('Campaign progress refresh error:', error.message);
+    });
+}
 
 // Update the UI with drop progress data
 function updateDropProgressUI(data) {
