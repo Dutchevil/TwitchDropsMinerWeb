@@ -34,8 +34,8 @@ Every several seconds, the application pretends to watch a particular stream by 
 1. **Using Docker Compose (Recommended)**:
    ```bash
    # Clone the repository or download the docker-compose.yml file
-   git clone https://github.com/DevilXD/TwitchDropsMiner.git
-   cd TwitchDropsMiner
+   git clone https://github.com/Dutchevil/TwitchDropsMinerWeb.git
+   cd TwitchDropsMinerWeb
    
    # Start the container
    docker-compose up -d
@@ -51,14 +51,14 @@ Every several seconds, the application pretends to watch a particular stream by 
      --restart unless-stopped \
      -p 8080:8080 \
      -v ./data:/data \
-     ghcr.io/kaysharp42/twitchdropsminer-web:latest
+     ghcr.io/dutchevil/twitchdropsminer-web:latest
    ```
 
 3. **Docker Compose Configuration Example**:
    ```yaml
    services:  
      twitch-drops-miner: 
-       image: ghcr.io/kaysharp42/twitchdropsminer-web:latest
+       image: ghcr.io/dutchevil/twitchdropsminer-web:latest
        container_name: twitchdropsminer-web
        restart: unless-stopped
        ports:
@@ -67,6 +67,7 @@ Every several seconds, the application pretends to watch a particular stream by 
          - ./data:/data
        environment:
          - TZ=UTC
+         - PORT=8080
          - DOCKER_CONTAINER=true
    ```
 

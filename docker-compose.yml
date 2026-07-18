@@ -1,14 +1,7 @@
 services:  
   twitch-drops-miner: 
-    image: ${DOCKER_REGISTRY:-ghcr.io}/kaysharp42/twitchdropsminer-web:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: 1
-      cache_from:
-        - ${DOCKER_REGISTRY:-ghcr.io}/kaysharp42/twitchdropsminer-web:${TAG:-latest}
-    container_name: twitchdropsminer-web
+    image: ghcr.io/dutchevil/twitchdropsminer-web:${TAG:-latest}
+    container_name: ${CONTAINER_NAME:-twitchdropsminer-web}
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-8080}:${PORT:-8080}"

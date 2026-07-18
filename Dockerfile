@@ -39,8 +39,8 @@ FROM python:3.12-slim
 # Add metadata labels
 LABEL org.opencontainers.image.title="TwitchDropsMinerWeb"
 LABEL org.opencontainers.image.description="A tool for mining Twitch drops with web interface"
-LABEL org.opencontainers.image.source="https://github.com/Kaysharp42/TwitchDropsMinerWeb"
-LABEL org.opencontainers.image.vendor="Kaysharp42"
+LABEL org.opencontainers.image.source="https://github.com/Dutchevil/TwitchDropsMinerWeb"
+LABEL org.opencontainers.image.vendor="Dutchevil"
 
 # Set working directory
 WORKDIR /app
