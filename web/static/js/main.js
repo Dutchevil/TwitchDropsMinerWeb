@@ -161,6 +161,30 @@ function reloadMiner() {
     }
 }
 
+// Ask the miner backend to fetch fresh inventory/campaign data from Twitch.
+function triggerMinerInventoryRefresh() {
+    return fetch('/api/refresh_inventory', {
+        method: 'POST',
+        headers: getAuthHeaders()
+    })
+        .then(response => {
+            if (!handleUnauthorizedResponse(response)) {
+                throw new Error('Unauthorized');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to refresh inventory');
+            }
+            return data;
+        });
+}
+
+function waitForMinerRefresh(ms = 2500) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Function to manually refresh inventory
 
 function manualRefreshInventory() {
@@ -175,23 +199,21 @@ function manualRefreshInventory() {
         showToast('Refreshing', 'Refreshing inventory data...', 'info');
         
         // Call the refresh inventory API endpoint
-        fetch('/api/refresh_inventory', {
-            method: 'POST',
-            headers: getAuthHeaders()
-        })
-        .then(response => response.json())
+        triggerMinerInventoryRefresh()
         .then(data => {
-            if (data.success) {
-                showToast('Success', data.message || 'Inventory refresh initiated', 'success');
-                // Refresh data after a short delay
-                setTimeout(refreshData, 2000);
-            } else {
-                showToast('Error', data.error || 'Failed to refresh inventory', 'error');
-            }
+            showToast('Success', data.message || 'Inventory refresh initiated', 'success');
+            // Give the miner a moment to fetch Twitch campaign/account-link state, then refresh UI.
+            return waitForMinerRefresh().then(() => refreshData({
+                refreshChannels: true,
+                refreshCampaigns: true,
+                refreshInventory: true,
+                refreshSettings: false,
+                refreshLogin: true
+            }));
         })
         .catch(error => {
             // Error handled silently;
-            showToast('Error', 'Failed to refresh inventory. Check console for details.', 'error');
+            showToast('Error', error.message || 'Failed to refresh inventory. Check console for details.', 'error');
         })
         .finally(() => {
             setTimeout(() => {
@@ -509,14 +531,22 @@ function setupEventListeners() {
             manualRefreshButton.disabled = true;
             icon.classList.add('fa-spin');
             
-            // Full refresh with progress bar
-            refreshData({
-                refreshChannels: true,
-                refreshCampaigns: true,
-                refreshInventory: true,
-                refreshSettings: true,
-                refreshLogin: true
-            }).finally(() => {
+            // Ask the miner to fetch fresh Twitch campaign/account-link state first,
+            // then reload the UI data after the backend has had a moment to update.
+            showToast('Refreshing', 'Fetching latest Twitch campaigns and inventory...', 'info');
+            triggerMinerInventoryRefresh()
+                .catch(error => {
+                    showToast('Refresh Warning', error.message || 'Could not trigger miner refresh; refreshing cached UI data.', 'warning');
+                })
+                .then(() => waitForMinerRefresh())
+                .then(() => refreshData({
+                    refreshChannels: true,
+                    refreshCampaigns: true,
+                    refreshInventory: true,
+                    refreshSettings: true,
+                    refreshLogin: true
+                }))
+                .finally(() => {
                 // Reset button state after refresh completes
                 setTimeout(() => {
                     manualRefreshButton.disabled = false;
@@ -536,15 +566,20 @@ function setupEventListeners() {
             // Show toast notification
             showToast('Refreshing', 'Fetching latest data from the miner...', 'info');
             
-            // Perform full refresh with loader and handle the promise
-            refreshData({
-                showLoader: true,
-                refreshChannels: true,
-                refreshCampaigns: true,
-                refreshInventory: true,
-                refreshSettings: true,
-                refreshLogin: true
-            })
+            // Ask the miner backend to fetch fresh Twitch state before updating UI.
+            triggerMinerInventoryRefresh()
+                .catch(error => {
+                    showToast('Refresh Warning', error.message || 'Could not trigger miner refresh; refreshing cached UI data.', 'warning');
+                })
+                .then(() => waitForMinerRefresh())
+                .then(() => refreshData({
+                    showLoader: true,
+                    refreshChannels: true,
+                    refreshCampaigns: true,
+                    refreshInventory: true,
+                    refreshSettings: true,
+                    refreshLogin: true
+                }))
                 .catch(error => {
                     // Error handled silently;
                     showToast('Refresh Error', 'There was an error refreshing the data.', 'error');
