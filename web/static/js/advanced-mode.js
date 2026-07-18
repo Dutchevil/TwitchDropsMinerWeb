@@ -90,6 +90,6 @@ function enhanceAdvancedMode() {
     
     if (document.getElementById('connection-ping').textContent === '' || document.getElementById('connection-ping').textContent === '--') {
         const connectionStatus = document.getElementById('connection-detail').textContent.trim();
-        document.getElementById('connection-ping').textContent = connectionStatus.includes('Connected') ? Math.floor(Math.random() * 100) + 'ms' : '--';
+        document.getElementById('connection-ping').textContent = connectionStatus.includes('Connected') ? 'waiting for next poll' : '--';
     }
 }

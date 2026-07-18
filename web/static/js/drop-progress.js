@@ -5,8 +5,8 @@
  */
 
 // Poll interval (in milliseconds) for checking drop progress
-const DROP_PROGRESS_POLL_INTERVAL = 30000; // 30 seconds
-const CAMPAIGNS_PROGRESS_REFRESH_INTERVAL = 60000; // 60 seconds
+const DROP_PROGRESS_POLL_INTERVAL = 10000; // 10 seconds
+const CAMPAIGNS_PROGRESS_REFRESH_INTERVAL = 20000; // 20 seconds
 let dropProgressInterval = null;
 let lastCampaignsProgressRefresh = 0;
 
@@ -28,6 +28,8 @@ function fetchActiveDropData() {
     if (document.hidden) {
         return Promise.resolve({ active_drop: null });
     }
+
+    const requestStartedAt = performance.now();
     
     return fetch('/api/active_drop', {
         headers: getAuthHeaders()
@@ -45,6 +47,8 @@ function fetchActiveDropData() {
             return response.json();
         })
         .then(data => {
+            data._pingMs = Math.round(performance.now() - requestStartedAt);
+            data._fetchedAt = new Date();
             updateDropProgressUI(data);
             refreshCampaignsProgressIfNeeded();
             return data;
@@ -52,6 +56,7 @@ function fetchActiveDropData() {
         .catch(error => {
             // Silent error handling for active drop data fetch errors
             console.log('Drop progress fetch error:', error.message);
+            updateAdvancedDropError(error.message);
             return { active_drop: null, error: error.message };
         });
 }
@@ -78,6 +83,26 @@ function refreshCampaignsProgressIfNeeded() {
     });
 }
 
+function updateAdvancedDropFields(data) {
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+
+    const source = data.source ? data.source.toUpperCase() : 'API';
+    setText('drop-data-source', source);
+    setText('drop-id', data.drop_id || '--');
+    setText('drop-raw-progress', `${data.current_minutes ?? '--'}/${data.required_minutes ?? '--'} (${data.progress_percentage ?? 0}%)`);
+    setText('drop-last-update', (data._fetchedAt || new Date()).toLocaleTimeString());
+    setText('connection-ping', data._pingMs !== undefined ? `${data._pingMs}ms` : '--');
+    setText('last-error', 'None');
+}
+
+function updateAdvancedDropError(message) {
+    const lastError = document.getElementById('last-error');
+    if (lastError) lastError.textContent = message || 'Unknown error';
+}
+
 // Update the UI with drop progress data
 function updateDropProgressUI(data) {
     // Exit if no drop data available
@@ -90,6 +115,8 @@ function updateDropProgressUI(data) {
     if (dropValue) {
         dropValue.textContent = data.name || 'None';
     }
+
+    updateAdvancedDropFields(data);
     
     // Update drop image
     updateDropImage(data.image_url);
