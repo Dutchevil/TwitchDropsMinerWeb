@@ -84,9 +84,8 @@ jobs:
         run: |
           docker run --rm \
             --entrypoint python \
-            -v "$PWD/tests:/tests:ro" \
             ${{ steps.image.outputs.ref }}:ci \
-            /tests/test_web_dashboard_helpers.py
+            /app/tests/test_web_dashboard_helpers.py
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

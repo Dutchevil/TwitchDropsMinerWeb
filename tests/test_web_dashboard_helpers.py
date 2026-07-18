@@ -4,7 +4,10 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT = os.environ.get(
+    "APP_ROOT",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+)
 WEB = os.path.join(ROOT, "web")
 for path in (ROOT, WEB):
     if path not in sys.path:

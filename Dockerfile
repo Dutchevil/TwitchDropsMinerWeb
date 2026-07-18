@@ -75,6 +75,7 @@ ENV DISPLAY=''
 # Copy source code
 COPY *.py ./
 COPY web/ ./web/
+COPY tests/ ./tests/
 COPY icons/ ./icons/
 COPY lang/ ./lang/
 COPY .env.example ./
