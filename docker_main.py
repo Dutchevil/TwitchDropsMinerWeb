@@ -98,9 +98,11 @@ async def main():
     log.info(f"Starting TwitchDropsMiner {__version__} in Docker/Web Mode")
     print(f"Starting TwitchDropsMiner {__version__} in Docker/Web Mode")
 
-    # Web interface configuration (for Docker)
+    # Web interface configuration (for Docker). PORT is supported for
+    # Docker/Portainer stacks; WEB_PORT remains supported for backwards compatibility.
     WEB_HOST = "0.0.0.0"  # Listen on all interfaces
-    WEB_PORT = int(os.environ.get("WEB_PORT", "8080"))    # Create args for settings using ParsedArgs from main.py
+    WEB_PORT = int(os.environ.get("PORT") or os.environ.get("WEB_PORT", "8080"))
+    # Create args for settings using ParsedArgs from main.py
     args = ParsedArgs()
     # Set Docker-specific defaults
     args._verbose = 0
