@@ -7,8 +7,10 @@
 // Poll interval (in milliseconds) for checking drop progress
 const DROP_PROGRESS_POLL_INTERVAL = 10000; // 10 seconds
 const CAMPAIGNS_PROGRESS_REFRESH_INTERVAL = 20000; // 20 seconds
+const INVENTORY_PROGRESS_REFRESH_INTERVAL = 20000; // 20 seconds
 let dropProgressInterval = null;
 let lastCampaignsProgressRefresh = 0;
+let lastInventoryProgressRefresh = 0;
 
 // Initialize the drop progress poller
 function initializeDropProgress() {
@@ -51,6 +53,7 @@ function fetchActiveDropData() {
             data._fetchedAt = new Date();
             updateDropProgressUI(data);
             refreshCampaignsProgressIfNeeded();
+            refreshInventoryProgressIfNeeded();
             return data;
         })
         .catch(error => {
@@ -80,6 +83,22 @@ function refreshCampaignsProgressIfNeeded() {
     lastCampaignsProgressRefresh = now;
     window.fetchCampaigns().catch(error => {
         console.log('Campaign progress refresh error:', error.message);
+    });
+}
+
+function refreshInventoryProgressIfNeeded() {
+    if (window.currentTab !== 'inventory' || typeof window.fetchInventory !== 'function') {
+        return;
+    }
+
+    const now = Date.now();
+    if (now - lastInventoryProgressRefresh < INVENTORY_PROGRESS_REFRESH_INTERVAL) {
+        return;
+    }
+
+    lastInventoryProgressRefresh = now;
+    window.fetchInventory().catch(error => {
+        console.log('Inventory progress refresh error:', error.message);
     });
 }
 

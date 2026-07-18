@@ -8,6 +8,7 @@ window.setupDropsVirtualRendering = setupDropsVirtualRendering;
 window.createCampaignCard = createCampaignCard;
 window.createDropCard = createDropCard;
 window.fetchCampaigns = fetchCampaigns;
+window.fetchInventory = fetchInventory;
 window.showToast = showToast;
 window.updateCampaignsUI = updateCampaignsUI;
 
