@@ -494,8 +494,14 @@ class Channel:
         async with self._twitch.request("HEAD", stream_chunk_url) as head_response:
             return head_response.status == 200
 
-    # NOTE: This is currently unused.
-    async def _send_watch_spade(self) -> bool:
+    async def send_watch(self) -> bool:
+        """Report a minute watched using Twitch's spade endpoint.
+
+        The GQL sendSpadeEvents mutation no longer reliably advances drop
+        progress. Twitch still accepts the spade analytics endpoint returned by
+        the stream access token request, which is what upstream TwitchDropsMiner
+        currently uses for watch progress.
+        """
         if self._stream is None:
             return False
         if self._spade_url is None:
@@ -508,7 +514,8 @@ class Channel:
         except RequestException:
             return False
 
-    async def send_watch(self) -> bool:  # send_watch_gql
+    # NOTE: This is currently unused.
+    async def _send_watch_gql(self) -> bool:
         if self._stream is None:
             return False
         try:
