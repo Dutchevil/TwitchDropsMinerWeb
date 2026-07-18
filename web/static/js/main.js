@@ -919,6 +919,12 @@ function setupSmartFilterListeners() {
     }
 }
 
+function isDropClaimable(drop) {
+    const required = Number(drop.required_minutes || 0);
+    const current = Number(drop.current_minutes || 0);
+    return required > 0 && current >= required;
+}
+
 function dropProgressPercent(drop) {
     const required = Number(drop.required_minutes || 0);
     const current = Number(drop.current_minutes || 0);
@@ -930,8 +936,8 @@ function prioritizeDrops(drops) {
         const aCurrent = a.id && a.id === currentDropContext.id ? 1 : 0;
         const bCurrent = b.id && b.id === currentDropContext.id ? 1 : 0;
         if (aCurrent !== bCurrent) return bCurrent - aCurrent;
-        const aClaimable = Number(a.current_minutes || 0) >= Number(a.required_minutes || 0) ? 1 : 0;
-        const bClaimable = Number(b.current_minutes || 0) >= Number(b.required_minutes || 0) ? 1 : 0;
+        const aClaimable = isDropClaimable(a) ? 1 : 0;
+        const bClaimable = isDropClaimable(b) ? 1 : 0;
         if (aClaimable !== bClaimable) return bClaimable - aClaimable;
         return dropProgressPercent(b) - dropProgressPercent(a);
     });
@@ -943,7 +949,7 @@ function filterDropsForSmartView(drops, mode) {
         const pct = dropProgressPercent(drop);
         const isCurrent = drop.id && drop.id === currentDropContext.id;
         const sameGame = currentDropContext.game && drop.game === currentDropContext.game;
-        const claimable = Number(drop.current_minutes || 0) >= Number(drop.required_minutes || 0);
+        const claimable = isDropClaimable(drop);
         if (mode === 'current-game') return sameGame || isCurrent;
         if (mode === 'in-progress') return pct > 0 && pct < 100;
         if (mode === 'claimable') return claimable;
@@ -962,7 +968,7 @@ function filterCampaignsForSmartView(campaigns) {
             const pct = dropProgressPercent(drop);
             return pct > 0 && pct < 100;
         });
-        const claimable = drops.some(drop => Number(drop.current_minutes || 0) >= Number(drop.required_minutes || 0));
+        const claimable = drops.some(drop => isDropClaimable(drop));
         if (mode === 'current-game') return sameGame || hasCurrent;
         if (mode === 'in-progress') return inProgress || hasCurrent;
         if (mode === 'claimable') return claimable;
@@ -977,7 +983,7 @@ function prioritizeCampaigns(campaigns) {
             const hasCurrent = drops.some(drop => drop.id && drop.id === currentDropContext.id) ? 1000 : 0;
             const sameGame = currentDropContext.game && campaign.game === currentDropContext.game ? 200 : 0;
             const maxProgress = drops.reduce((max, drop) => Math.max(max, dropProgressPercent(drop)), 0);
-            const claimable = drops.some(drop => Number(drop.current_minutes || 0) >= Number(drop.required_minutes || 0)) ? 500 : 0;
+            const claimable = drops.some(drop => isDropClaimable(drop)) ? 500 : 0;
             return hasCurrent + claimable + sameGame + maxProgress;
         };
         return score(b) - score(a);
@@ -1727,11 +1733,7 @@ function updateInventoryUI(data) {
     
     if (data.pending && data.pending.length > 0) {
         filterDropsForSmartView(data.pending, inventoryMode).forEach(drop => {
-            // Calculate progress
-            const progress = drop.current_minutes / drop.required_minutes;
-            
-            // If progress is 1.0 (100%), treat it as claimed
-            if (progress >= 1.0) {
+            if (isDropClaimable(drop)) {
                 // Add additional property to show it's auto-moved
                 drop.autoMoved = true;
                 claimedItems.push(drop);

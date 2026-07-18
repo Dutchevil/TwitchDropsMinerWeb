@@ -288,14 +288,17 @@ function createDropCard(drop, type) {
     if (type === 'pending') {
         dropCard.className = 'bg-white rounded shadow mb-4 overflow-hidden';
         
-        // Calculate progress
-        const progress = drop.current_minutes / drop.required_minutes;
-        const percent = Math.round(progress * 100);
-        const isReady = drop.current_minutes >= drop.required_minutes;
+        // Calculate progress. Some Twitch rewards (chat badges, one-off rewards)
+        // report required_minutes=0; those are not watch-progress claimable and
+        // must not render as NaN% or show a claim button.
+        const requiredMinutes = Number(drop.required_minutes || 0);
+        const currentMinutes = Number(drop.current_minutes || 0);
+        const percent = requiredMinutes > 0 ? Math.round((currentMinutes / requiredMinutes) * 100) : 0;
+        const isReady = requiredMinutes > 0 && currentMinutes >= requiredMinutes;
         const statusClass = isReady ? 'bg-green-100 border-green-500' : 'bg-blue-100 border-blue-500';
         const actionButton = isReady ? 
             `<button class="claim-drop-btn bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded text-sm" data-drop-id="${drop.id}">
-                <i class="fas fa-gift mr-1"></i> Claimed
+                <i class="fas fa-gift mr-1"></i> Claim
             </button>` : 
             '';
         
@@ -323,7 +326,7 @@ function createDropCard(drop, type) {
                             <div class="shadow w-full bg-gray-200 rounded">
                                 <div class="bg-purple-600 text-xs leading-none py-1 text-center text-white rounded" style="width: ${percent}%">${percent}%</div>
                             </div>
-                            <p class="mt-1 text-sm text-gray-500">${drop.current_minutes}/${drop.required_minutes} minutes watched</p>
+                            <p class="mt-1 text-sm text-gray-500">${currentMinutes}/${requiredMinutes} minutes watched</p>
                         </div>
                     </div>
                 </div>
