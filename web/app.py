@@ -186,6 +186,13 @@ def get_current_drop_from_miner(twitch):
     return drop, source
 
 
+def wake_miner_after_auth(twitch):
+    """Persist auth and wake the miner so fresh OAuth login fetches campaigns/games."""
+    twitch.save(force=True)
+    if hasattr(twitch, 'change_state'):
+        twitch.change_state(State.INVENTORY_FETCH)
+
+
 @app.route('/login')
 def login():
     """Render the login page"""
@@ -898,8 +905,8 @@ def twitch_check_auth(username=None):
                     logger.error(f"Error setting up auth state: {e}")
                     app.config['VALIDATING_AUTH'] = False
                 
-                # Trigger a state change to force the app to reload with the new auth
-                twitch.save(force=True)
+                # Trigger a state change to force the app to fetch inventory/games with the new auth
+                wake_miner_after_auth(twitch)
             except Exception as e:
                 logger.error(f"Error setting cookie during login: {e}")
             return jsonify({

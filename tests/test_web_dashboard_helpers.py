@@ -70,6 +70,15 @@ class DashboardHelperTests(unittest.TestCase):
         self.assertEqual(status, 202)
         self.assertEqual(data, {'ok': True})
 
+    def test_wake_miner_after_auth_saves_and_fetches_inventory(self):
+        calls = []
+        twitch = SimpleNamespace(
+            save=lambda force=False: calls.append(("save", force)),
+            change_state=lambda state: calls.append(("state", state)),
+        )
+        web_app.wake_miner_after_auth(twitch)
+        self.assertEqual(calls, [("save", True), ("state", web_app.State.INVENTORY_FETCH)])
+
 
 if __name__ == "__main__":
     unittest.main()
