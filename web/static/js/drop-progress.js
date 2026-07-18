@@ -60,6 +60,7 @@ function fetchActiveDropData() {
             // Silent error handling for active drop data fetch errors
             console.log('Drop progress fetch error:', error.message);
             updateAdvancedDropError(error.message);
+            updateAdvancedDropPing(null);
             return { active_drop: null, error: error.message };
         });
 }
@@ -113,8 +114,13 @@ function updateAdvancedDropFields(data) {
     setText('drop-id', data.drop_id || '--');
     setText('drop-raw-progress', `${data.current_minutes ?? '--'}/${data.required_minutes ?? '--'} (${data.progress_percentage ?? 0}%)`);
     setText('drop-last-update', (data._fetchedAt || new Date()).toLocaleTimeString());
-    setText('connection-ping', data._pingMs !== undefined ? `${data._pingMs}ms` : '--');
+    updateAdvancedDropPing(data._pingMs);
     setText('last-error', 'None');
+}
+
+function updateAdvancedDropPing(pingMs) {
+    const ping = document.getElementById('connection-ping');
+    if (ping) ping.textContent = pingMs !== null && pingMs !== undefined ? `${pingMs}ms` : 'active-drop poll failed';
 }
 
 function updateAdvancedDropError(message) {

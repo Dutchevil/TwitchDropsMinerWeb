@@ -1310,10 +1310,12 @@ function updateStatusUI(data) {
     const progressBar = document.getElementById('drop-progress-bar');
     if (progressBar && data.drop_progress !== undefined && data.drop_progress !== null) {
         let percent = 0;
+        let current = null;
+        let required = null;
         
         // Handle the format "67/120" (current/required) that comes from the API
         if (typeof data.drop_progress === 'string' && data.drop_progress.includes('/')) {
-            const [current, required] = data.drop_progress.split('/').map(num => parseInt(num, 10));
+            [current, required] = data.drop_progress.split('/').map(num => parseInt(num, 10));
             if (!isNaN(current) && !isNaN(required) && required > 0) {
                 percent = Math.round((current / required) * 100);
             }
@@ -1329,6 +1331,19 @@ function updateStatusUI(data) {
         
         progressBar.style.width = `${percent}%`;
         progressBar.textContent = `${percent}%`;
+
+        // Keep advanced drop fields useful even if the active-drop poll has not
+        // returned yet. The active-drop API will overwrite these with Drop ID
+        // and API ping when it succeeds.
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setText('drop-data-source', 'STATUS');
+        setText('drop-raw-progress', current !== null && required !== null ? `${current}/${required} (${percent}%)` : `${percent}%`);
+        setText('drop-last-update', new Date().toLocaleTimeString());
+        const lastError = document.getElementById('last-error');
+        if (lastError && (!lastError.textContent || lastError.textContent === '--')) lastError.textContent = 'None';
     } else if (progressBar) {
         progressBar.style.width = '0%';
         progressBar.textContent = '0%';
