@@ -60,7 +60,7 @@ http://SERVER-IP:8080
 
 ## Multi-instance example
 
-Run one container per Twitch account. Each instance must have a unique container name, host port, internal `PORT`, and data directory.
+Run one container per Twitch account. Each instance must have a unique container name, host port, and data directory. The internal container port can stay `8080` for every instance; only the host port needs to be unique.
 
 ```yaml
 services:
@@ -82,12 +82,12 @@ services:
     container_name: twitchdropsminer-web-tom
     restart: unless-stopped
     ports:
-      - "8181:8181"
+      - "8181:8080"
     volumes:
       - ./data-tom:/data
     environment:
       - TZ=UTC
-      - PORT=8181
+      - PORT=8080
       - DOCKER_CONTAINER=true
 ```
 
@@ -136,16 +136,7 @@ If a campaign still shows unlinked, Twitch may not have refreshed the linked sta
 | `DOCKER_CONTAINER` | `true` | Marks the app as running in Docker mode. |
 | `JWT_SECRET` | generated | Persisted in `/data/.env`; normally leave empty so the entrypoint generates it once. |
 
-Port mapping must match the internal port you set:
-
-```yaml
-ports:
-  - "8181:8181"
-environment:
-  - PORT=8181
-```
-
-Alternatively, you can keep every container internally on 8080 and only change the host port:
+Recommended pattern: keep the internal container port on `8080` and change only the host port per account:
 
 ```yaml
 ports:
@@ -154,7 +145,7 @@ environment:
   - PORT=8080
 ```
 
-Both patterns work; using matching ports is often clearer in Dockhand/Portainer.
+This means the extra instance is reachable on host port `8181`, while the app still listens on `8080` inside the container. You can also map matching ports if you explicitly set `PORT=8181`, but the host-only port change is simpler for multi-instance stacks.
 
 ## Development checks
 
