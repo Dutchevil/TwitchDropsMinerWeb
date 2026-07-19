@@ -1,7 +1,7 @@
 aiohttp>=3.13,<4.0
 yarl>=1.20.0
 requests>=2.32.0
-truststore>=0.10.0
+truststore>=0.10.4
 
 # web interface dependencies
 Flask>=3.1.0
