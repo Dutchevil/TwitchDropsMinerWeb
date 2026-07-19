@@ -77,6 +77,10 @@ jobs:
             VCS_REF=${{ github.sha }}
             VERSION=${{ github.ref_name }}
 
+      - name: Verify Docker healthcheck metadata
+        run: |
+          docker inspect --format='{{json .Config.Healthcheck}}' ${{ steps.image.outputs.ref }}:ci | grep '/health'
+
       - name: Python compile checks inside image
         run: |
           docker run --rm --entrypoint python ${{ steps.image.outputs.ref }}:ci \

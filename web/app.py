@@ -186,6 +186,135 @@ def get_current_drop_from_miner(twitch):
     return drop, source
 
 
+def build_health_payload(twitch=None) -> Dict[str, Any]:
+    """Build a safe, user-facing health summary for Docker and the dashboard."""
+    if twitch is None:
+        twitch = tdm_instance
+    now = datetime.now(timezone.utc)
+    if twitch is None:
+        return {
+            'ok': False,
+            'state': 'starting',
+            'level': 'warning',
+            'message': 'Miner is starting',
+            'action_required': 'Wait for the miner to initialize.',
+            'server_time': now.isoformat(),
+            'checks': {
+                'miner_initialized': False,
+                'twitch_login': False,
+                'campaigns_fetched': False,
+                'linked_campaigns': False,
+                'channels_ready': False,
+                'mining_active': False,
+            },
+            'counts': {
+                'campaigns_total': 0,
+                'active_campaigns': 0,
+                'linked_campaigns': 0,
+                'eligible_campaigns': 0,
+                'earnable_campaigns': 0,
+                'channels': 0,
+            },
+        }
+
+    state_name = getattr(getattr(twitch, '_state', None), 'name', 'UNKNOWN')
+    auth_state = getattr(twitch, '_auth_state', None)
+    auth_valid = bool(
+        auth_state is not None
+        and getattr(auth_state, 'user_id', 0) not in (None, 0)
+        and getattr(auth_state, '_logged_in', None) is not None
+        and auth_state._logged_in.is_set()
+    )
+    session_active = bool(getattr(twitch, '_session', None) is not None)
+
+    websocket_connected = False
+    gui = _get_gui()
+    if gui and hasattr(gui, 'websockets') and hasattr(gui.websockets, 'statuses'):
+        websocket_connected = any(
+            s.get('status') not in (None, 'Disconnected')
+            for s in gui.websockets.statuses.values()
+        )
+    elif hasattr(twitch, 'websocket') and hasattr(twitch.websocket, 'websockets'):
+        websocket_connected = any(getattr(ws, 'connected', False) for ws in twitch.websocket.websockets)
+
+    campaigns = list(getattr(twitch, 'inventory', []) or []) if isinstance(getattr(twitch, 'inventory', []), list) else []
+    campaigns_total = len(campaigns)
+    active_campaigns = sum(1 for c in campaigns if bool(getattr(c, 'active', False)))
+    linked_campaigns = sum(1 for c in campaigns if bool(getattr(c, 'linked', False)))
+    eligible_campaigns = sum(1 for c in campaigns if bool(getattr(c, 'eligible', False)))
+    earnable_campaigns = sum(
+        1 for c in campaigns
+        if bool(getattr(c, 'active', False)) and bool(getattr(c, 'eligible', False)) and not bool(getattr(c, 'finished', False))
+    )
+    channels_count = len(getattr(twitch, 'channels', {}) or {})
+    drop, _source = get_current_drop_from_miner(twitch)
+    mining_active = drop is not None or getattr(twitch, 'watching_channel', None) is not None and twitch.watching_channel.get_with_default(None) is not None
+
+    level = 'ok'
+    health_state = 'ready'
+    message = 'Ready'
+    action_required = None
+    if not auth_valid:
+        level = 'warning'
+        health_state = 'needs_login'
+        message = 'Twitch login required'
+        action_required = 'Open the Login tab and complete Twitch OAuth.'
+    elif campaigns_total == 0:
+        level = 'warning'
+        health_state = 'fetching_campaigns' if state_name in {'INVENTORY_FETCH', 'GAMES_UPDATE', 'CHANNELS_FETCH'} else 'no_campaigns'
+        message = 'No campaigns loaded yet'
+        action_required = 'Click Refresh to fetch campaigns, or wait for the startup refresh to finish.'
+    elif eligible_campaigns == 0:
+        level = 'warning'
+        health_state = 'no_linked_campaigns'
+        message = 'Campaigns found, but none are linked/eligible for this Twitch account'
+        action_required = 'Link required game accounts on Twitch Drops, then click Refresh.'
+    elif earnable_campaigns == 0:
+        level = 'info'
+        health_state = 'no_earnable_campaigns'
+        message = 'No currently earnable campaigns'
+        action_required = 'Check campaign filters or wait for active linked campaigns.'
+    elif channels_count == 0:
+        level = 'warning'
+        health_state = 'fetching_channels' if state_name in {'CHANNELS_FETCH', 'CHANNEL_SWITCH'} else 'no_channels'
+        message = 'Eligible campaigns exist, but no channels are ready yet'
+        action_required = 'Click Refresh; if this persists, Twitch may not expose live eligible channels yet.'
+    elif mining_active:
+        health_state = 'mining'
+        message = 'Mining active'
+    else:
+        health_state = 'ready'
+        message = 'Ready; waiting for a channel/drop'
+
+    return {
+        'ok': level in {'ok', 'info'},
+        'state': health_state,
+        'level': level,
+        'message': message,
+        'action_required': action_required,
+        'server_time': now.isoformat(),
+        'miner_state': state_name,
+        'checks': {
+            'miner_initialized': True,
+            'twitch_login': auth_valid,
+            'session_active': session_active,
+            'websocket_connected': websocket_connected,
+            'campaigns_fetched': campaigns_total > 0,
+            'linked_campaigns': eligible_campaigns > 0,
+            'channels_ready': channels_count > 0,
+            'mining_active': mining_active,
+        },
+        'counts': {
+            'campaigns_total': campaigns_total,
+            'active_campaigns': active_campaigns,
+            'linked_campaigns': linked_campaigns,
+            'eligible_campaigns': eligible_campaigns,
+            'earnable_campaigns': earnable_campaigns,
+            'channels': channels_count,
+        },
+    }
+
+
 def schedule_miner_state(twitch, state: State) -> None:
     """Wake the miner state machine from Flask's request thread safely."""
     if not hasattr(twitch, 'change_state'):
@@ -285,6 +414,14 @@ def auth_logout(username=None):
     response.delete_cookie('auth_token', path='/')
     
     return response
+
+
+@app.route('/health')
+def health():
+    """Unauthenticated container health endpoint for Docker/Portainer/Dockhand."""
+    payload = build_health_payload()
+    status_code = 200 if payload.get('state') != 'starting' else 503
+    return jsonify(payload), status_code
 
 
 @app.route('/api/status')
@@ -1446,7 +1583,8 @@ def diagnostic(username=None):
         return jsonify({
             'system_info': system_info,
             'miner_state': miner_state,
-            'stats': stats
+            'stats': stats,
+            'health': build_health_payload(twitch)
         })
     except Exception as e:
         logger.error(f"Error getting diagnostic information: {e}")
@@ -1577,12 +1715,15 @@ def dashboard_state(username=None):
             errors['active_drop'] = active_data
             active_data = None
 
+        health_data = build_health_payload(tdm_instance)
+
         payload = {
             'server_time': server_time.isoformat(),
             'asset_version': get_asset_version(),
             'status': status_data,
             'active_drop': active_data,
             'diagnostics': diagnostics_data,
+            'health': health_data,
             'progress_health': (
                 active_data or {}
             ).get('progress_health') if isinstance(active_data, dict) else None,

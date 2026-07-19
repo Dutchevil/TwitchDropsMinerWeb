@@ -16,6 +16,7 @@ This fork is based on [DevilXD/TwitchDropsMiner](https://github.com/DevilXD/Twit
 - GitHub Actions build/test pipeline for every push, with GHCR publish for branches/tags.
 - Slim Python 3.13 Docker image without desktop GUI packages.
 - Persistent `/data/.env` so web-login JWT sessions survive container updates/recreates.
+- Docker/Portainer healthcheck plus dashboard health summary for login, campaign-link, channel, and mining readiness.
 
 ## Published Docker image
 
@@ -126,6 +127,45 @@ git push to master -> GitHub Actions tests/builds -> GHCR latest updated -> Dock
 
 If a campaign still shows unlinked, Twitch may not have refreshed the linked state yet. Wait briefly and click Refresh again. A container restart should only be a fallback, not the normal path.
 
+## Health status
+
+The image includes a Docker `HEALTHCHECK` that calls:
+
+```text
+/health
+```
+
+The endpoint is intentionally unauthenticated so Docker, Portainer, and Dockhand can read it. It does **not** expose secrets, cookies, or tokens. The dashboard Diagnostics card also shows a **Miner Health** summary with:
+
+- Twitch login state
+- campaign fetch state
+- linked/eligible campaign counts
+- earnable campaign count
+- channel readiness
+- current mining readiness/action message
+
+Useful health states include:
+
+```text
+needs_login
+no_campaigns
+no_linked_campaigns
+no_earnable_campaigns
+no_channels
+ready
+mining
+```
+
+## Dependabot
+
+Dependabot is enabled weekly for:
+
+- GitHub Actions
+- Python dependencies from `requirements.txt`
+- Docker base image updates from `Dockerfile`
+
+Pull requests still go through the normal CI build/tests before anything is merged.
+
 ## Environment variables
 
 | Variable | Default | Description |
@@ -155,7 +195,7 @@ The CI workflow runs these checks:
 - Frontend inventory-card rendering regression test.
 - Docker image build on Python 3.13 slim.
 - Python compile checks inside the built image.
-- Backend helper and Docker entrypoint config regression tests inside the built image.
+- Backend helper, health payload, Docker healthcheck, and entrypoint config regression tests inside the built image.
 - GHCR publish on push to `master` and version tags.
 
 Local equivalent:

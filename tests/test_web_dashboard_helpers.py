@@ -107,6 +107,56 @@ class DashboardHelperTests(unittest.TestCase):
         self.assertEqual(calls[0][0], "scheduled")
         self.assertEqual(calls[0][2], (web_app.State.INVENTORY_FETCH,))
 
+    def test_health_payload_marks_login_required_before_twitch_auth(self):
+        twitch = SimpleNamespace(
+            _state=SimpleNamespace(name="IDLE"),
+            _auth_state=SimpleNamespace(user_id=0, _logged_in=SimpleNamespace(is_set=lambda: False)),
+            _session=None,
+            inventory=[],
+            channels={},
+            websocket=SimpleNamespace(websockets=[]),
+            watching_channel=SimpleNamespace(get_with_default=lambda default: None),
+            get_active_drop=lambda channel: None,
+        )
+        old_instance = web_app.tdm_instance
+        web_app.tdm_instance = twitch
+        try:
+            payload = web_app.build_health_payload(twitch)
+            with web_app.app.test_client() as client:
+                response = client.get('/health')
+        finally:
+            web_app.tdm_instance = old_instance
+
+        self.assertEqual(payload["state"], "needs_login")
+        self.assertFalse(payload["checks"]["twitch_login"])
+        self.assertIn("Twitch login", payload["message"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["state"], "needs_login")
+
+    def test_health_payload_reports_linked_and_earnable_campaigns(self):
+        campaign = SimpleNamespace(
+            active=True,
+            linked=True,
+            eligible=True,
+            finished=False,
+        )
+        twitch = SimpleNamespace(
+            _state=SimpleNamespace(name="CHANNEL_SWITCH"),
+            _auth_state=SimpleNamespace(user_id=123, _logged_in=SimpleNamespace(is_set=lambda: True)),
+            _session=object(),
+            inventory=[campaign],
+            channels={"chan": object()},
+            websocket=SimpleNamespace(websockets=[SimpleNamespace(connected=True)]),
+            watching_channel=SimpleNamespace(get_with_default=lambda default: None),
+            get_active_drop=lambda channel: None,
+        )
+        payload = web_app.build_health_payload(twitch)
+        self.assertEqual(payload["state"], "ready")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["counts"]["eligible_campaigns"], 1)
+        self.assertEqual(payload["counts"]["earnable_campaigns"], 1)
+        self.assertEqual(payload["counts"]["channels"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

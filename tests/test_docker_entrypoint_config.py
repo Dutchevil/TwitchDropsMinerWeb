@@ -25,6 +25,15 @@ class DockerEntrypointConfigTests(unittest.TestCase):
         self.assertNotIn("WEB_PORT=", env)
         self.assertNotIn("DOCKER_REGISTRY=", env)
 
+    def test_dockerfile_has_stdlib_healthcheck(self):
+        dockerfile_path = ROOT / "Dockerfile"
+        if not dockerfile_path.exists():
+            self.skipTest("Dockerfile is not copied into the runtime image")
+        dockerfile = dockerfile_path.read_text()
+        self.assertIn("HEALTHCHECK", dockerfile)
+        self.assertIn("/health", dockerfile)
+        self.assertIn("urllib.request", dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()

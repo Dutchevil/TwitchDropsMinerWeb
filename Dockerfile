@@ -83,5 +83,9 @@ COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh && \
     ls -la /app/docker-entrypoint.sh
 
+# Health check for Docker/Portainer/Dockhand. Uses Python stdlib only so no curl/wget is needed.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\") or os.environ.get(\"WEB_PORT\") or \"8080\"}/health', timeout=4).read()" || exit 1
+
 # Set the entrypoint with web interface enabled and accessible from outside
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

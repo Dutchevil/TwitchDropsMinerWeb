@@ -855,6 +855,9 @@ function fetchDashboardState() {
             if (data.diagnostics) {
                 updateDiagnosticUI(data.diagnostics);
             }
+            if (data.health) {
+                updateMinerHealthUI(data.health);
+            }
             updatePollHealthUI(data, Math.round(performance.now() - requestStartedAt));
             return data;
         })
@@ -1843,8 +1846,35 @@ function claimDrop(dropId) {
     });
 }
 
+function updateMinerHealthUI(health) {
+    if (!health) return;
+    const status = document.getElementById('miner-health-status');
+    const message = document.getElementById('miner-health-message');
+    const action = document.getElementById('miner-health-action');
+    const linked = document.getElementById('miner-health-linked');
+
+    const level = health.level || (health.ok ? 'ok' : 'warning');
+    const dotClass = level === 'ok'
+        ? 'bg-green-500'
+        : (level === 'info' ? 'bg-blue-500' : 'bg-yellow-500');
+    const label = health.state ? health.state.replace(/_/g, ' ') : 'unknown';
+
+    if (status) {
+        status.innerHTML = `<span class="h-3 w-3 rounded-full ${dotClass} mr-2"></span>${label}`;
+    }
+    if (message) message.textContent = health.message || '--';
+    if (action) action.textContent = health.action_required || 'None';
+    if (linked) {
+        const counts = health.counts || {};
+        linked.textContent = `${counts.eligible_campaigns || 0}/${counts.campaigns_total || 0} eligible, ${counts.earnable_campaigns || 0} earnable, ${counts.channels || 0} channels`;
+    }
+}
+
 // Update diagnostic UI with data
 function updateDiagnosticUI(data) {
+    if (data.health) {
+        updateMinerHealthUI(data.health);
+    }
     // Update version
     const appVersion = document.getElementById('app-version');
     if (appVersion) appVersion.textContent = data.system_info.version || 'Unknown';
