@@ -44,10 +44,10 @@ if not JWT_SECRET:
         with open(env_path, 'w') as f:
             f.write(env_content)
             
-        print(f"Generated and saved JWT secret to .env file: {JWT_SECRET[:8]}...{JWT_SECRET[-8:]}")
+        print("Generated and saved JWT secret to .env file")
     else:
         # .env file doesn't exist, just use the generated secret this time
-        print(f"WARNING: .env file not found. Using generated JWT secret: {JWT_SECRET[:8]}...{JWT_SECRET[-8:]}")
+        print("WARNING: .env file not found. Using generated in-memory JWT secret")
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRY_DAYS = 7  # Token expires after 7 days
 

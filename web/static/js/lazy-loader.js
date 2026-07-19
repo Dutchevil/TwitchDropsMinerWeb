@@ -1,6 +1,30 @@
 // File: lazy-loader.js - Handles lazy loading of images and content
 // This file contains utility functions for optimizing page performance
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function safeImageUrl(url) {
+    const value = String(url || '').trim();
+    if (!value) return '';
+    if (/^(https?:|data:image\/)/i.test(value)) return value;
+    return '';
+}
+
+function dropProgressMeta(drop) {
+    const requiredMinutes = Number(drop?.required_minutes || 0);
+    const currentMinutes = Number(drop?.current_minutes || 0);
+    const percent = requiredMinutes > 0 ? Math.min(100, Math.max(0, Math.round((currentMinutes / requiredMinutes) * 100))) : 0;
+    const isReady = requiredMinutes > 0 && currentMinutes >= requiredMinutes;
+    return { requiredMinutes, currentMinutes, percent, isReady };
+}
+
 // Setup lazy loading for images
 function setupLazyLoading() {
     // If Intersection Observer isn't supported, load all images immediately
@@ -158,81 +182,85 @@ function getDataWithPreload(dataType, fetchFunction) {
 // Set up virtual rendering for campaigns list
 // Helper function to create a campaign card - moved from main.js
 function createCampaignCard(campaign) {
-    // Determine status display information
-    const statusClass = campaign.status === 'ACTIVE' ? 'bg-green-100 border-green-500' : 'bg-gray-100 border-gray-400';
-    let statusText = campaign.status === 'ACTIVE' ? 'Active' : 'Inactive';
-    const statusTextColor = campaign.status === 'ACTIVE' ? 'text-green-800' : 'text-gray-600';
-    
-    // Add "Not Linked" indicator in status if the campaign is not linked
-    if (!campaign.linked) {
-        statusText += ' (Not Linked)';
-    }
-    
+    const imageUrl = safeImageUrl(campaign.image_url);
+    const campaignName = escapeHtml(campaign.name || 'Unknown Campaign');
+    const gameName = escapeHtml(campaign.game || 'Unknown Game');
+    const status = campaign.status || 'UNKNOWN';
+    const isActive = status === 'ACTIVE';
+    const isUpcoming = status === 'UPCOMING';
+    const isExpired = status === 'EXPIRED';
+    const statusClass = isActive ? 'bg-green-100 border-green-500' : (isUpcoming ? 'bg-yellow-100 border-yellow-500' : 'bg-gray-100 border-gray-400');
+    const statusTextColor = isActive ? 'text-green-800' : (isUpcoming ? 'text-yellow-800' : 'text-gray-600');
+    const statusLabels = [];
+    statusLabels.push(isActive ? 'Active' : (isUpcoming ? 'Upcoming' : (isExpired ? 'Expired' : 'Inactive')));
+    if (campaign.excluded) statusLabels.push('Excluded');
+    if (campaign.linked === false) statusLabels.push('Not Linked');
+    else if (campaign.linked === true) statusLabels.push('Linked');
+    if (campaign.finished) statusLabels.push('Finished');
+    const statusText = statusLabels.join(' · ');
+
     const campaignCard = document.createElement('div');
     campaignCard.className = 'w-full p-4 bg-blue-50 rounded shadow';
-    
-    // Prepare HTML structure for the campaign card
-    let cardHTML = `
+
+    const dropsHtml = campaign.drops && campaign.drops.length > 0 ?
+        `<div class="flex flex-wrap overflow-x-auto pb-2">
+            ${campaign.drops.map(drop => {
+                const dropImageUrl = safeImageUrl(drop.image_url);
+                const dropName = escapeHtml(drop.name || 'Unknown Drop');
+                const { requiredMinutes, percent } = dropProgressMeta(drop);
+                const progressHtml = drop.claimed ?
+                    `<p class="text-xs text-green-600 font-semibold">Claimed</p>` :
+                    (requiredMinutes > 0 ?
+                        `<p class="text-xs text-gray-600">${percent}% of ${requiredMinutes} min</p>
+                        <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                            <div class="bg-green-600 h-1.5 rounded-full" style="width: ${percent}%"></div>
+                        </div>` :
+                        `<p class="text-xs text-gray-600">No watch time required</p>`);
+                return `
+                    <div class="mr-4 mb-2 flex flex-col items-center" style="min-width: 100px">
+                        ${dropImageUrl ?
+                            `<img data-src="${dropImageUrl}" alt="${dropName}" class="w-16 h-16 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">` :
+                            `<div class="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
+                                <i class="fas fa-gift text-gray-400"></i>
+                            </div>`}
+                        <div class="mt-1 text-xs text-center">
+                            <p class="font-semibold">${dropName}</p>
+                            ${progressHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>` :
+        `<p class="text-gray-500 text-sm">No drops available</p>`;
+
+    campaignCard.innerHTML = `
         <div class="flex flex-col w-full">
             <div class="flex">
-                <!-- Left side with campaign info -->
                 <div class="w-1/4 flex flex-col items-center pr-3">
-                    ${campaign.image_url ? 
-                    `<div class="mb-2">
-                        <img data-src="${campaign.image_url}" alt="${campaign.name}" class="w-24 h-24 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">
-                    </div>` : 
-                    `<div class="mb-2 w-24 h-24 bg-gray-200 rounded flex items-center justify-center">
-                        <i class="fas fa-gamepad text-gray-400 text-2xl"></i>
-                    </div>`}
-                    
-                    <h3 class="font-bold text-sm text-center text-gray-800 mb-2">${campaign.game || 'Unknown Game'}</h3>
+                    ${imageUrl ?
+                        `<div class="mb-2">
+                            <img data-src="${imageUrl}" alt="${campaignName}" class="w-24 h-24 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">
+                        </div>` :
+                        `<div class="mb-2 w-24 h-24 bg-gray-200 rounded flex items-center justify-center">
+                            <i class="fas fa-gamepad text-gray-400 text-2xl"></i>
+                        </div>`}
+                    <h3 class="font-bold text-sm text-center text-gray-800 mb-2">${gameName}</h3>
                     <div class="text-xs text-center">
                         ${campaign.start_time ? `<p class="text-gray-600">Starts: ${new Date(campaign.start_time).toLocaleDateString()}</p>` : ''}
                         ${campaign.end_time ? `<p class="text-gray-600">Ends: ${new Date(campaign.end_time).toLocaleDateString()}</p>` : ''}
                     </div>
                     <div class="mt-2">
-                        <span class="px-2 py-1 rounded text-xs font-semibold ${statusTextColor} bg-opacity-70 ${statusClass}">${statusText}</span>
+                        <span class="px-2 py-1 rounded text-xs font-semibold ${statusTextColor} bg-opacity-70 ${statusClass}">${escapeHtml(statusText)}</span>
                     </div>
                 </div>
-                
-                <!-- Right side with drops -->
                 <div class="w-3/4 pl-3 border-l">
-                    <h3 class="font-bold text-base text-gray-800 mb-3">${campaign.name}</h3>
-                    
-                    ${campaign.drops && campaign.drops.length > 0 ? 
-                    `<div class="flex flex-wrap overflow-x-auto pb-2">
-                        ${campaign.drops.map(drop => {
-                            // Calculate progress percentage and format for display
-                            const progressPct = drop.required_minutes > 0 ? 
-                                Math.round((drop.current_minutes / drop.required_minutes) * 100) : 0;
-                            
-                            return `
-                            <div class="mr-4 mb-2 flex flex-col items-center" style="min-width: 100px">
-                                ${drop.image_url ? 
-                                `<img data-src="${drop.image_url}" alt="${drop.name}" class="w-16 h-16 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">` : 
-                                `<div class="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
-                                    <i class="fas fa-gift text-gray-400"></i>
-                                </div>`}
-                                <div class="mt-1 text-xs text-center">
-                                    <p class="font-semibold">${drop.name}</p>
-                                    ${!drop.claimed ? 
-                                    `<p class="text-xs text-gray-600">${progressPct}% of ${drop.required_minutes} min</p>
-                                    <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                                        <div class="bg-green-600 h-1.5 rounded-full" style="width: ${progressPct}%"></div>
-                                    </div>` : 
-                                    `<p class="text-xs text-green-600 font-semibold">Claimed</p>`}
-                                </div>
-                            </div>
-                            `;
-                        }).join('')}
-                    </div>` : 
-                    `<p class="text-gray-500 text-sm">No drops available</p>`}
+                    <h3 class="font-bold text-base text-gray-800 mb-3">${campaignName}</h3>
+                    ${dropsHtml}
                 </div>
             </div>
         </div>
     `;
-    
-    campaignCard.innerHTML = cardHTML;
+
     return campaignCard;
 }
 
@@ -291,20 +319,21 @@ function createDropCard(drop, type) {
         // Calculate progress. Some Twitch rewards (chat badges, one-off rewards)
         // report required_minutes=0; those are not watch-progress claimable and
         // must not render as NaN% or show a claim button.
-        const requiredMinutes = Number(drop.required_minutes || 0);
-        const currentMinutes = Number(drop.current_minutes || 0);
-        const percent = requiredMinutes > 0 ? Math.round((currentMinutes / requiredMinutes) * 100) : 0;
-        const isReady = requiredMinutes > 0 && currentMinutes >= requiredMinutes;
+        const { requiredMinutes, currentMinutes, percent, isReady } = dropProgressMeta(drop);
         const statusClass = isReady ? 'bg-green-100 border-green-500' : 'bg-blue-100 border-blue-500';
+        const safeDropId = escapeHtml(drop.id || '');
+        const dropName = escapeHtml(drop.name || 'Unknown Drop');
+        const gameName = escapeHtml(drop.game || 'Unknown Game');
+        const imageUrl = safeImageUrl(drop.image_url);
         const actionButton = isReady ? 
-            `<button class="claim-drop-btn bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded text-sm" data-drop-id="${drop.id}">
+            `<button class="claim-drop-btn bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded text-sm" data-drop-id="${safeDropId}">
                 <i class="fas fa-gift mr-1"></i> Claim
             </button>` : 
             '';
         
-        const imageHtml = drop.image_url ? 
+        const imageHtml = imageUrl ? 
             `<div class="mr-3 flex-shrink-0">
-                <img data-src="${drop.image_url}" alt="${drop.name}" class="w-16 h-16 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">
+                <img data-src="${imageUrl}" alt="${dropName}" class="w-16 h-16 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">
             </div>` : 
             '';
         
@@ -315,8 +344,8 @@ function createDropCard(drop, type) {
                     <div class="flex-grow">
                         <div class="flex justify-between items-start w-full">
                             <div>
-                                <h3 class="font-bold text-lg text-gray-800">${drop.name}</h3>
-                                <p class="text-gray-600">${drop.game || 'Unknown Game'}</p>
+                                <h3 class="font-bold text-lg text-gray-800">${dropName}</h3>
+                                <p class="text-gray-600">${gameName}</p>
                             </div>
                             <div>
                                 ${actionButton}
@@ -343,9 +372,12 @@ function createDropCard(drop, type) {
             `<p class="mt-2 text-sm text-gray-500">100% Complete</p>` :
             (drop.claim_time ? `<p class="mt-2 text-sm text-gray-500">Claimed on ${new Date(drop.claim_time).toLocaleString()}</p>` : '');
         
-        const imageHtml = drop.image_url ? 
+        const imageUrl = safeImageUrl(drop.image_url);
+        const dropName = escapeHtml(drop.name || 'Unknown Drop');
+        const gameName = escapeHtml(drop.game || 'Unknown Game');
+        const imageHtml = imageUrl ? 
             `<div class="mr-3 flex-shrink-0">
-                <img data-src="${drop.image_url}" alt="${drop.name}" class="w-16 h-16 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">
+                <img data-src="${imageUrl}" alt="${dropName}" class="w-16 h-16 object-cover rounded lazy-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">
             </div>` : 
             '';
         
@@ -355,8 +387,8 @@ function createDropCard(drop, type) {
                 <div class="flex-grow">
                     <div class="flex justify-between items-start w-full">
                         <div>
-                            <h3 class="font-bold text-lg text-gray-800">${drop.name}</h3>
-                            <p class="text-gray-600">${drop.game || 'Unknown Game'}</p>
+                            <h3 class="font-bold text-lg text-gray-800">${dropName}</h3>
+                            <p class="text-gray-600">${gameName}</p>
                         </div>
                         ${statusBadge}
                     </div>

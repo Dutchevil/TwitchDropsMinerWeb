@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Set Docker container indicator
 export DOCKER_CONTAINER=true
@@ -6,18 +7,20 @@ export DOCKER_CONTAINER=true
 # Create data directory if it doesn't exist
 mkdir -p /data
 
-# Copy .env.example to .env if .env doesn't exist
-if [ ! -f /app/.env ]; then
+# Persist .env in /data so JWT_SECRET survives container recreate/update.
+# Keep /app/.env as a symlink because web/auth.py and generate_jwt_secret.py
+# both resolve the env file relative to /app.
+if [ ! -f /data/.env ]; then
     if [ -f /app/.env.example ]; then
-        echo "Creating .env from .env.example"
-        cp /app/.env.example /app/.env
-        echo ".env file created successfully"
+        echo "Creating persistent /data/.env from .env.example"
+        cp /app/.env.example /data/.env
     else
-        echo "Warning: .env.example not found. Skipping .env creation."
+        echo "Creating persistent /data/.env"
+        printf 'PORT=%s\nTZ=%s\nJWT_SECRET=\n' "${PORT:-8080}" "${TZ:-UTC}" > /data/.env
     fi
-else
-    echo ".env file already exists, skipping copy."
 fi
+rm -f /app/.env
+ln -sf /data/.env /app/.env
 
 # Check if settings.json exists in /data, if not create with default values
 if [ ! -f /data/settings.json ]; then
@@ -68,7 +71,8 @@ fi
 rm -f /app/settings.json /app/cookies.jar /app/credentials.json /app/blacklist.json
 
 # Ensure proper permissions on the data files
-chmod 755 /data/settings.json /data/cookies.jar /data/credentials.json /data/blacklist.json
+chmod 644 /data/settings.json
+chmod 600 /data/.env /data/cookies.jar /data/credentials.json /data/blacklist.json
 
 # Create symbolic links
 ln -sf /data/settings.json /app/settings.json
@@ -76,23 +80,23 @@ ln -sf /data/cookies.jar /app/cookies.jar
 ln -sf /data/credentials.json /app/credentials.json
 ln -sf /data/blacklist.json /app/blacklist.json
 
-# Debug permissions
+# Debug permissions without printing file contents/secrets
 echo "Current user: $(whoami)"
-echo "File permissions:"
-ls -la /data/
-ls -la /app/settings.json /app/cookies.jar /app/credentials.json /app/blacklist.json
+echo "Data directory initialized: /data"
 
+# Import smoke checks that fail fast if the image is broken
 echo "Verifying Python imports..."
-python -c "import sys; print(sys.path)"
 python -c "import yarl; print(f\"yarl version: {yarl.__version__}\")"
 python -c "import aiohttp; print(f\"aiohttp version: {aiohttp.__version__}\")"
 
-echo "Checking JWT secret..."
 # Check if JWT_SECRET is empty in .env file
 if grep -q "JWT_SECRET=$" /app/.env 2>/dev/null || ! grep -q "JWT_SECRET=" /app/.env 2>/dev/null; then
-    echo "Generating new JWT secret..."
+    echo "Generating persistent JWT secret..."
     python /app/generate_jwt_secret.py
 fi
+
+# Make sure generated secret remains private after generate_jwt_secret.py writes it
+chmod 600 /data/.env
 
 echo "Starting TwitchDropsMiner..."
 exec python docker_main.py

@@ -36,7 +36,7 @@ jobs:
       - name: Set up Node.js for frontend checks
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Frontend syntax and rendering checks
         run: |
@@ -77,7 +77,7 @@ jobs:
       - name: Python compile checks inside image
         run: |
           docker run --rm --entrypoint python ${{ steps.image.outputs.ref }}:ci \
-            -m py_compile docker_main.py web/app.py channel.py twitch.py inventory.py constants.py web/auth.py
+            -m py_compile docker_main.py web/app.py channel.py twitch.py inventory.py constants.py utils.py web/auth.py
 
       - name: Backend helper tests inside image
         run: |
@@ -85,6 +85,10 @@ jobs:
             --entrypoint python \
             ${{ steps.image.outputs.ref }}:ci \
             /app/tests/test_web_dashboard_helpers.py
+          docker run --rm \
+            --entrypoint python \
+            ${{ steps.image.outputs.ref }}:ci \
+            /app/tests/test_docker_entrypoint_config.py
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

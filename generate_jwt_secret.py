@@ -5,7 +5,6 @@ This script is useful for rotating the JWT secret periodically.
 """
 import os
 import secrets
-from dotenv import load_dotenv
 
 def main():
     # Generate new secret

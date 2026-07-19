@@ -1,18 +1,11 @@
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 # Set working directory for the builder stage
 WORKDIR /app
 
-# Install build dependencies needed for pip, PyGObject and cairo dependencies
+# Install build dependencies needed for Python wheels
 RUN apt-get update && apt-get install -y \
     build-essential \
-    pkg-config \
-    python3-dev \
-    libcairo2-dev \
-    libgirepository1.0-dev \
-    libglib2.0-dev \
-    gir1.2-gtk-3.0 \
-    gir1.2-ayatanaappindicator3-0.1 \
     --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -25,16 +18,11 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir wheel && \
-    pip install --no-cache-dir yarl>=1.7.2 && \
-    pip install --no-cache-dir multidict>=6.0.2 && \
-    pip install --no-cache-dir aiohttp>=3.9.0 && \
-    pip install --no-cache-dir requests>=2.28.0 && \
+RUN pip install --no-cache-dir --upgrade pip wheel && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 # Second stage: minimal runtime image
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="TwitchDropsMinerWeb"
@@ -45,14 +33,9 @@ LABEL org.opencontainers.image.vendor="Dutchevil"
 # Set working directory
 WORKDIR /app
 
-# Install only the minimal runtime dependencies needed
+# Install only minimal runtime tools used by the entrypoint/runtime
 RUN apt-get update && apt-get install -y \
-    wget \
-    libcairo2 \
-    libgirepository-1.0-1 \
-    gir1.2-gtk-3.0 \
-    gir1.2-ayatanaappindicator3-0.1 \
-    tk \
+    ca-certificates \
     --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -76,7 +59,6 @@ ENV DISPLAY=''
 COPY *.py ./
 COPY web/ ./web/
 COPY tests/ ./tests/
-COPY icons/ ./icons/
 COPY lang/ ./lang/
 COPY .env.example ./
 
