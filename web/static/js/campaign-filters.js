@@ -40,7 +40,17 @@ function initCampaignFilters() {
                 return;
             }
             
-            window.fetchCampaigns()
+            const refreshPromise = typeof window.triggerMinerInventoryRefresh === 'function'
+                ? window.triggerMinerInventoryRefresh().catch(error => {
+                    if (typeof window.showToast === 'function') {
+                        window.showToast('Refresh Warning', error.message || 'Could not trigger miner refresh; refreshing cached campaign data.', 'warning');
+                    }
+                })
+                : Promise.resolve();
+
+            refreshPromise
+                .then(() => typeof window.waitForMinerRefresh === 'function' ? window.waitForMinerRefresh() : undefined)
+                .then(() => window.fetchCampaigns())
                 .then(data => {
                     window.originalCampaignsData = [...data]; // Keep original data for filtering
                     applyCampaignFilters(); // Apply filters to the new data
@@ -63,8 +73,13 @@ function initCampaignFilters() {
 
 // Apply campaign filters based on checkbox states
 function applyCampaignFilters() {
-    // If no campaigns data, nothing to filter
-    if (!window.originalCampaignsData || !window.originalCampaignsData.length) return;
+    // Clear stale cards when fresh data is empty.
+    if (!window.originalCampaignsData || !window.originalCampaignsData.length) {
+        if (typeof window.updateCampaignsUI === 'function') {
+            window.updateCampaignsUI([]);
+        }
+        return;
+    }
     // Get filter states
     const filterNotLinked = document.getElementById('filter-not-linked').checked;
     const filterUpcoming = document.getElementById('filter-upcoming').checked;

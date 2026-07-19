@@ -184,8 +184,10 @@ function triggerMinerInventoryRefresh() {
 function waitForMinerRefresh(ms = 2500) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+window.triggerMinerInventoryRefresh = triggerMinerInventoryRefresh;
+window.waitForMinerRefresh = waitForMinerRefresh;
 
-// Function to manually refresh inventory
+// Function to show toast notifications
 
 function manualRefreshInventory() {
     // Visual feedback for refresh button
@@ -594,40 +596,6 @@ function setupEventListeners() {
         });
     }
     
-    // Header refresh button
-    const headerRefreshButton = document.getElementById('manual-refresh');
-    if (headerRefreshButton) {
-        headerRefreshButton.addEventListener('click', () => {
-            // Visual feedback for refresh
-            const icon = headerRefreshButton.querySelector('i');
-            headerRefreshButton.disabled = true;
-            icon.classList.add('fa-spin');
-              // Show toast notification
-            showToast('Refreshing', 'Fetching latest data from the miner...', 'info');
-            
-            // Perform full refresh with loader and handle the promise
-            refreshData({
-                showLoader: true,
-                refreshChannels: true,
-                refreshCampaigns: true,
-                refreshInventory: true,
-                refreshSettings: true,
-                refreshLogin: true
-            })
-                .catch(error => {
-                    // Error handled silently;
-                    showToast('Refresh Error', 'There was an error refreshing the data.', 'error');
-                })
-                .finally(() => {
-                    // Reset button after completion
-                    setTimeout(() => {
-                        icon.classList.remove('fa-spin');
-                        headerRefreshButton.disabled = false;
-                    }, 500);
-                });
-        });
-    }
-    
     // Diagnostic panel buttons
     const fetchDiagnosticsButton = document.getElementById('fetch-diagnostics');
     if (fetchDiagnosticsButton) {
@@ -879,7 +847,7 @@ function fetchDashboardState() {
                 data.status._statusPingMs = Math.round(performance.now() - requestStartedAt);
                 updateStatusUI(data.status);
             }
-            if (data.active_drop && data.active_drop.active_drop !== null && typeof updateDropProgressUI === 'function') {
+            if (data.active_drop && typeof updateDropProgressUI === 'function') {
                 data.active_drop._pingMs = Math.round(performance.now() - requestStartedAt);
                 data.active_drop._fetchedAt = new Date();
                 updateDropProgressUI(data.active_drop);

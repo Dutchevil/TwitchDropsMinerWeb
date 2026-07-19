@@ -37,12 +37,10 @@ function fetchActiveDropData() {
         headers: getAuthHeaders()
     })
         .then(response => {
-            // Handle authentication errors
-            if (handleUnauthorizedResponse(response)) {
-                return { active_drop: null, error: 'Authentication required' };
-            }
-            
             if (!response.ok) {
+                if (!handleUnauthorizedResponse(response)) {
+                    return Promise.reject(new Error('Unauthorized'));
+                }
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
@@ -128,11 +126,45 @@ function updateAdvancedDropError(message) {
     if (lastError) lastError.textContent = message || 'Unknown error';
 }
 
+function clearActiveDropUI(message = 'No active drop') {
+    clearCurrentDropContext();
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+
+    setText('current-drop', 'None');
+    setText('drop-value', 'None');
+    setText('drop-progress-text', message);
+    setText('drop-data-source', '--');
+    setText('drop-id', '--');
+    setText('drop-raw-progress', '--/-- (0%)');
+    setText('drop-last-update', new Date().toLocaleTimeString());
+
+    const progressBar = document.getElementById('drop-progress-bar');
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        progressBar.classList.add('text-black');
+        progressBar.classList.remove('text-white');
+        progressBar.style.textAlign = 'left';
+        progressBar.style.paddingLeft = '5px';
+    }
+
+    updateDropImage(null);
+}
+
 // Update the UI with drop progress data
 function updateDropProgressUI(data) {
-    // Exit if no drop data available
+    // Clear visible stale values when there is no current drop.
     if (!data || data.error || data.active_drop === null) {
-        clearCurrentDropContext();
+        clearActiveDropUI(data?.error || 'No active drop');
+        if (data && !data.error) {
+            updateAdvancedDropPing(data._pingMs);
+            const lastError = document.getElementById('last-error');
+            if (lastError) lastError.textContent = 'None';
+        }
         return;
     }
     
@@ -140,6 +172,10 @@ function updateDropProgressUI(data) {
     const dropValue = document.getElementById('drop-value');
     if (dropValue) {
         dropValue.textContent = data.name || 'None';
+    }
+    const currentDrop = document.getElementById('current-drop');
+    if (currentDrop) {
+        currentDrop.textContent = data.name || 'None';
     }
 
     updateCurrentDropContext(data.drop_id || null, data.name || null, data.game || null);
@@ -228,6 +264,7 @@ function updateDropImage(imageUrl) {
     const imageContainer = document.getElementById('drop-image-container');
     const dropImage = document.getElementById('drop-image');
     const fallbackIcon = document.getElementById('drop-image-fallback');
+    if (!imageContainer || !dropImage || !fallbackIcon) return;
     
     if (imageUrl) {
         // Use the actual drop image

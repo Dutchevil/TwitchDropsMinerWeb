@@ -186,11 +186,21 @@ def get_current_drop_from_miner(twitch):
     return drop, source
 
 
+def schedule_miner_state(twitch, state: State) -> None:
+    """Wake the miner state machine from Flask's request thread safely."""
+    if not hasattr(twitch, 'change_state'):
+        return
+    if main_event_loop is not None and getattr(main_event_loop, 'is_closed', lambda: False)() is False:
+        main_event_loop.call_soon_threadsafe(twitch.change_state, state)
+    else:
+        # Fallback for tests or non-threaded startup where no event loop was registered.
+        twitch.change_state(state)
+
+
 def wake_miner_after_auth(twitch):
     """Persist auth and wake the miner so fresh OAuth login fetches campaigns/games."""
     twitch.save(force=True)
-    if hasattr(twitch, 'change_state'):
-        twitch.change_state(State.INVENTORY_FETCH)
+    schedule_miner_state(twitch, State.INVENTORY_FETCH)
 
 
 @app.route('/login')
@@ -888,8 +898,7 @@ def twitch_check_auth(username=None):
                         app.config['OAUTH_SESSION'] = None
 
                         # Change state to IDLE if possible
-                        if hasattr(twitch, 'change_state') and hasattr(State, 'IDLE'):
-                            twitch.change_state(State.IDLE)
+                        schedule_miner_state(twitch, State.IDLE)
     
                     
                     # Mark as logged in
@@ -1038,7 +1047,7 @@ def twitch_logout(username=None):
                 
             # Change state to IDLE
             if hasattr(twitch, 'change_state') and hasattr(State, 'IDLE'):
-                twitch.change_state(State.RELOAD)
+                schedule_miner_state(twitch, State.RELOAD)
                 
             logger.info("Logout completed successfully")
 
@@ -1114,7 +1123,7 @@ def claim_drop(drop_id, username=None):
         # This will force a state change to claim the drop
         twitch.current_drop = found_drop
         if hasattr(State, 'INVENTORY_FETCH'):  # Use INVENTORY_FETCH as fallback for DROP_CLAIM
-            twitch.change_state(State.INVENTORY_FETCH)
+            schedule_miner_state(twitch, State.INVENTORY_FETCH)
         
         return jsonify({
             'success': True, 
@@ -1158,7 +1167,7 @@ def set_channel(channel_name, username=None):
               # Set the channel and change state to channel watch
         twitch.current_channel = found_channel
         if hasattr(twitch, 'change_state') and hasattr(State, 'CHANNEL_SWITCH'):
-            twitch.change_state(State.CHANNEL_SWITCH)
+            schedule_miner_state(twitch, State.CHANNEL_SWITCH)
         
         return jsonify({
             'success': True, 
@@ -1278,7 +1287,7 @@ def update_settings(username=None):
         # If reload requested, trigger inventory fetch
         if data.get('reload', False):
             from constants import State
-            twitch.change_state(State.INVENTORY_FETCH)
+            schedule_miner_state(twitch, State.INVENTORY_FETCH)
         
         return jsonify({'success': True})
     except Exception as e:
@@ -1455,7 +1464,7 @@ def refresh_inventory(username=None):
         twitch = tdm_instance
         
         # Change state to fetch inventory
-        twitch.change_state(State.INVENTORY_FETCH)
+        schedule_miner_state(twitch, State.INVENTORY_FETCH)
         
         return jsonify({
             'success': True,
@@ -1476,8 +1485,8 @@ def reload(username=None):
     try:
         twitch = tdm_instance
         
-        # Reload the miner
-        twitch.reload()
+        # Reload the miner through the miner event loop
+        schedule_miner_state(twitch, State.RELOAD)
         
         return jsonify({
             'success': True,

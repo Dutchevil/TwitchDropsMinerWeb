@@ -174,7 +174,10 @@ node --check web/static/js/main.js
 node --check web/static/js/lazy-loader.js
 node --check web/static/js/drop-progress.js
 node --check web/static/js/advanced-mode.js
+node --check web/static/js/campaign-filters.js
 APP_ROOT="$PWD" node tests/test_inventory_card_rendering.js
+APP_ROOT="$PWD" node tests/test_drop_progress_rendering.js
+APP_ROOT="$PWD" node tests/test_campaign_filters.js
 python3 -m py_compile docker_main.py web/app.py channel.py twitch.py inventory.py constants.py utils.py web/auth.py
 docker build -t twitchdropsminerweb:local-check .
 docker run --rm --entrypoint python twitchdropsminerweb:local-check /app/tests/test_web_dashboard_helpers.py

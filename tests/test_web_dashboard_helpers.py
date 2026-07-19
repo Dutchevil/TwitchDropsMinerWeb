@@ -79,8 +79,33 @@ class DashboardHelperTests(unittest.TestCase):
             save=lambda force=False: calls.append(("save", force)),
             change_state=lambda state: calls.append(("state", state)),
         )
-        web_app.wake_miner_after_auth(twitch)
+        old_loop = web_app.main_event_loop
+        web_app.main_event_loop = None
+        try:
+            web_app.wake_miner_after_auth(twitch)
+        finally:
+            web_app.main_event_loop = old_loop
         self.assertEqual(calls, [("save", True), ("state", web_app.State.INVENTORY_FETCH)])
+
+    def test_schedule_miner_state_uses_registered_event_loop_threadsafe(self):
+        calls = []
+        class FakeLoop:
+            def is_closed(self):
+                return False
+            def call_soon_threadsafe(self, func, *args):
+                calls.append(("scheduled", func, args))
+
+        twitch = SimpleNamespace(change_state=lambda state: calls.append(("state", state)))
+        old_loop = web_app.main_event_loop
+        web_app.main_event_loop = FakeLoop()
+        try:
+            web_app.schedule_miner_state(twitch, web_app.State.INVENTORY_FETCH)
+        finally:
+            web_app.main_event_loop = old_loop
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "scheduled")
+        self.assertEqual(calls[0][2], (web_app.State.INVENTORY_FETCH,))
 
 
 if __name__ == "__main__":
