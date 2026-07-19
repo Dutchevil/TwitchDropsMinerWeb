@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Set working directory for the builder stage
 WORKDIR /app
@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir --upgrade pip wheel && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 # Second stage: minimal runtime image
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="TwitchDropsMinerWeb"
