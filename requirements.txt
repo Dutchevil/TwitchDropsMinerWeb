@@ -1,5 +1,5 @@
 aiohttp>=3.13,<4.0
-yarl>=1.24.2
+yarl>=1.24.5
 requests>=2.34.2
 truststore>=0.10.4
 
