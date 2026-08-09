@@ -34,7 +34,7 @@ jobs:
         run: echo "ref=${REGISTRY}/${{ steps.owner.outputs.name }}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js for frontend checks
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
 
