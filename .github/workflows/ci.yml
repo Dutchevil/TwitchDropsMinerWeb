@@ -86,16 +86,12 @@ jobs:
           docker run --rm --entrypoint python ${{ steps.image.outputs.ref }}:ci \
             -m py_compile docker_main.py web/app.py channel.py twitch.py inventory.py constants.py utils.py web/auth.py
 
-      - name: Backend helper tests inside image
+      - name: Backend and mining regression tests inside image
         run: |
           docker run --rm \
             --entrypoint python \
             ${{ steps.image.outputs.ref }}:ci \
-            /app/tests/test_web_dashboard_helpers.py
-          docker run --rm \
-            --entrypoint python \
-            ${{ steps.image.outputs.ref }}:ci \
-            /app/tests/test_docker_entrypoint_config.py
+            -m unittest discover -s /app/tests -p 'test_*.py' -v
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

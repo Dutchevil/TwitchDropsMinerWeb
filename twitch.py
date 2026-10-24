@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import asyncio
 import logging
-from time import time
+from time import time, monotonic
 from copy import deepcopy
 from itertools import chain
 from functools import partial
@@ -1010,13 +1010,17 @@ class Twitch:
                 # if the channel isn't online anymore, we stop watching it
                 self.stop_watching()
                 continue
-            current_time = time()
+            current_time = monotonic()
             succeeded: bool = await channel.send_watch()
             last_sent: float = current_time
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
             # wait ~20 seconds for a progress update
-            await asyncio.sleep(20)
+            await asyncio.sleep(max(0, interval - (monotonic() - last_sent)))
+            if not channel.online or self.watching_channel.get_with_default(None) is not channel:
+                await self._watch_sleep(0)
+                continue
+            current_time = monotonic()
             
             # Check if we should query for drop progress updates
             # In GUI mode: check if the progress tracker indicates we need an update AND timeout has passed
@@ -1029,6 +1033,8 @@ class Twitch:
             )
             
             if should_check_progress:
+                # Rate-limit actual query attempts, never skipped watch ticks.
+                last_update_time = current_time
                 # If the previous update was more than ~60s ago, and the progress tracker
                 # isn't counting down anymore, that means Twitch has temporarily
                 # stopped reporting drop's progress. To ensure the timer keeps at least somewhat
@@ -1048,6 +1054,8 @@ class Twitch:
                     )
                 except GQLException:
                     drop_data = None
+                if not channel.online or self.watching_channel.get_with_default(None) is not channel:
+                    continue
                 if drop_data is not None:
                     gql_drop: TimedDrop | None = self._drops.get(drop_data["dropID"])
                     if gql_drop is not None and gql_drop.can_earn(channel):
@@ -1058,7 +1066,6 @@ class Twitch:
                         )
                         logger.log(CALL, f"Drop progress from GQL: {drop_text}")
                         handled = True
-                        last_update_time = current_time
 
                 # Solution 2: If GQL fails, figure out which campaign we're most likely mining
                 # right now, and then bump up the minutes on it's drops
@@ -1075,16 +1082,10 @@ class Twitch:
                             )
                         logger.log(CALL, f"Drop progress from active search: {drop_text}")
                         handled = True
-                        last_update_time = current_time
                     else:
                         logger.log(CALL, "No active drop could be determined")
-                        # Even if no drop was found, update the timestamp to prevent spam
-                        last_update_time = current_time
-            else:
-                # Update was successful and recent, or GUI indicates no update needed
-                last_update_time = current_time
-                
-            await self._watch_sleep(interval - min(time() - last_sent, interval))
+            # Yield even when the request and update wait used the full watch interval.
+            await self._watch_sleep(max(0, interval - (monotonic() - last_sent)))
 
     @task_wrapper(critical=True)
     async def _maintenance_task(self) -> None:
